@@ -1,0 +1,14 @@
+date,time,card_no,person_type,id,name,class,batch,subject,session_type
+2026-02-03,10:45:02,38428559,Student,SEL41,MALI SAYALI RAJENDRA,SE,ALL,Numerical Methods & computer programming,Lecture
+2026-02-03,15:06:37,C3B62211,Student,SEL63,SHREYA SHANKAR DAPTARE,SE,ALL,Industrial Organization & Management,Lecture
+2026-02-03,15:09:25,2F5DAB59,Staff,9865,Prof. R. H. Joshi,SE,ALL,Industrial Organization & Management,Lecture
+2026-02-03,15:15:02,A39730F8,Student,BEL1,AVCHAR ANIKET DILIP,SE,ALL,Industrial Organization & Management,Lecture
+2026-02-03,15:48:34,c3b62211,Student,SEL63,SHREYA SHANKAR DAPTARE,se,all,test subject,lecture
+2026-02-03,15:51:10,33a02011,Student,SEL14,DHEBE PRATHMESH ANANDA,se,all,test subject,lecture
+2026-02-03,15:56:21,362211,Student,SEL63,SHREYA SHANKAR DAPTARE,se,all,testsubject,lecture
+2026-02-03,15:58:25,2559,Staff,9865,Prof. R. H. Joshi,se,all,Test Subject,lecture
+2026-02-03,15:58:52,38428559,Student,SEL41,MALI SAYALI RAJENDRA,se,all,Test Subject,lecture
+2026-02-03,15:59:29,3897,Student,SEL35,KHANDEKAR PRASHISH RAVI,se,all,Test Subject,lecture
+2026-02-03,16:13:41,362211,Student,SEL63,SHREYA SHANKAR DAPTARE,se,all,Test Subject,lecture
+2026-02-03,16:14:06,2559,Staff,9865,Prof. R. H. Joshi,se,all,Test Subject,lecture
+2026-02-03,16:16:56,3302011,Student,SEL14,DHEBE PRATHMESH ANANDA,se,all,Test Subject,lecture

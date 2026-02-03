@@ -1,0 +1,52 @@
+staff_id,subject,class,batch
+9865,Marathi,SE,SE-1
+9865,Marathi,SE,SE-2
+9865,Marathi,SE,SE-3
+9921,Fundamentals of data science & machine learning,SE,SE-1
+9921,Fundamentals of data science & machine learning,SE,SE-2
+9921,Fundamentals of data science & machine learning,SE,SE-3
+9921,Fundamentals of data science & machine learning,SE,ALL
+9921,Electrical Workshop 1,SE,SE-1
+9921,Electrical Workshop 1,SE,SE-2
+9921,Electrical Workshop 1,SE,SE-3
+9235,Network Analysis,SE,SE-1
+9235,Network Analysis,SE,SE-2
+9235,Network Analysis,SE,SE-3
+9235,Network Analysis,SE,ALL
+10016,OE-Project Management,SE,ALL
+9780,Electrical Machine-I,SE,SE-1
+9780,Electrical Machine-I,SE,SE-2
+9780,Electrical Machine-I,SE,SE-3
+9780,Electrical Machine-I,SE,ALL
+9780,Industrial Organization & Management,SE,ALL
+9954,Environmental Awareness for Electrical Engineering,SE,ALL
+9954,Numerical Methods & computer programming,SE,SE-1
+9954,Numerical Methods & computer programming,SE,SE-2
+9954,Numerical Methods & computer programming,SE,SE-3
+9954,Numerical Methods & computer programming,SE,ALL
+9922,Electrical Workshop 2,SE,SE-1
+9922,Electrical Workshop 2,SE,SE-2
+9922,Electrical Workshop 2,SE,SE-3
+9866,Computer Aided Design of Electrical Machines,TE,TE-1
+9866,Computer Aided Design of Electrical Machines,TE,TE-2
+9866,Computer Aided Design of Electrical Machines,TE,TE-3
+9866,Computer Aided Design of Electrical Machines,TE,ALL
+2093,Control System Engineering,TE,TE-1
+2093,Control System Engineering,TE,TE-2
+2093,Control System Engineering,TE,TE-3
+2093,Control System Engineering,TE,ALL
+350,Power System II,TE,TE-1
+350,Power System II,TE,TE-2
+350,Power System II,TE,TE-3
+350,Power System II,TE,ALL
+9922,Energy Management,TE,ALL
+9921,Switchgear and Protection,BE,BE-1
+9921,Switchgear and Protection,BE,BE-2
+9921,Switchgear and Protection,BE,BE-3
+9921,Switchgear and Protection,BE,ALL
+9954,Advanced Electricel Drives & Central,BE,BE-1
+9954,Advanced Electricel Drives & Central,BE,BE-2
+9954,Advanced Electricel Drives & Central,BE,BE-3
+9954,Advanced Electricel Drives & Central,BE,ALL
+9235,Illumination Engineering,BE,ALL
+9865,Smart Grid,BE,ALL
