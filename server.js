@@ -128,6 +128,13 @@ app.get("/log", (req, res) => {
   const identity = identifyCard(cardNo);
   console.log("🪪 Card Type:", identity.type);
 
+// 🔹 STEP 6: REJECT UNKNOWN CARDS
+if (identity.type === "UNKNOWN") {
+  console.log("❌ Rejected: Unknown card");
+  return res.send("OK"); // No DB, no CSV
+}
+
+
   // STEP 3
   const { day, time } = getCurrentDayAndTime();
   const activeSlots = findActiveTimetableSlots(day, time);
