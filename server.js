@@ -5,16 +5,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 /*
-  IMPORTANT:
-  You MUST have this in Render → Environment Variables
+ Render → Environment Variable (MUST EXIST)
 
-  Key   : MONGODB_URI
-  Value : mongodb+srv://sayalirmali_db_user:nodemark@cluster0.p1yhjxt.mongodb.net/?retryWrites=true&w=majority
+ Key   : MONGODB_URI
+ Value : mongodb+srv://sayalirmali_db_user:nodemark@cluster0.p1yhjxt.mongodb.net/rfid_attendance?retryWrites=true&w=majority
 */
 
 const MONGO_URI = process.env.MONGODB_URI;
 
-let logsCollection = null;
+let logsCollection;
 
 /* ============================
    START SERVER AFTER DB READY
@@ -26,20 +25,13 @@ async function startServer() {
       process.exit(1);
     }
 
-    // ✅ TLS FIX FOR RENDER + ATLAS
-    const client = new MongoClient(MONGO_URI, {
-      tls: true,
-      tlsAllowInvalidCertificates: true
-    });
-
+    const client = new MongoClient(MONGO_URI);
     await client.connect();
 
     const db = client.db("rfid_attendance");
     logsCollection = db.collection("attendance_logs");
 
-    console.log("✅ MongoDB connected successfully");
-
-    /* ---------- ROUTES ---------- */
+    console.log("✅ MongoDB connected");
 
     // Root route
     app.get("/", (req, res) => {
@@ -61,14 +53,13 @@ async function startServer() {
         });
 
         console.log("📌 Attendance logged:", cardNo);
-        res.send("OK");   // ESP EXPECTS THIS
+        res.send("OK");
       } catch (err) {
         console.error("❌ Insert error:", err);
         res.status(500).send("ERROR");
       }
     });
 
-    // Start listening ONLY after DB is ready
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
