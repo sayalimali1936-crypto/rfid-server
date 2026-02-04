@@ -21,7 +21,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
-// Create table if not exists
 db.run(`
   CREATE TABLE IF NOT EXISTS attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +35,6 @@ db.run(`
   }
 });
 
-// Create CSV file with header if it doesn't exist
 if (!fs.existsSync(csvPath)) {
   fs.writeFileSync(csvPath, "Card Number,Timestamp\n");
   console.log("✅ CSV file created with header");
@@ -53,7 +51,7 @@ function loadCSV(fileName) {
   const lines = data.trim().split("\n");
   const headers = lines.shift().split(",");
 
-  const records = lines.map(line => {
+  return lines.map(line => {
     const values = line.split(",");
     let obj = {};
     headers.forEach((h, i) => {
@@ -61,18 +59,14 @@ function loadCSV(fileName) {
     });
     return obj;
   });
-
-  return records;
 }
 
-// Load all CSVs
 const students = loadCSV("Students.csv");
 const staffMaster = loadCSV("Staff_Master.csv");
 const staffRoles = loadCSV("Staff_Roles.csv");
 const staffTeaching = loadCSV("Staff_Teaching.csv");
 const timetable = loadCSV("Time_Table.csv");
 
-// Log counts
 console.log("📄 CSV FILES LOADED:");
 console.log("Students:", students.length);
 console.log("Staff Master:", staffMaster.length);
@@ -86,14 +80,10 @@ console.log("Time Table:", timetable.length);
 
 function identifyCard(cardNo) {
   const student = students.find(s => s.card_no === cardNo);
-  if (student) {
-    return { type: "STUDENT", data: student };
-  }
+  if (student) return { type: "STUDENT", data: student };
 
   const staff = staffMaster.find(s => s.card_no === cardNo);
-  if (staff) {
-    return { type: "STAFF", data: staff };
-  }
+  if (staff) return { type: "STAFF", data: staff };
 
   return { type: "UNKNOWN", data: null };
 }
@@ -104,67 +94,72 @@ function identifyCard(cardNo) {
 
 function getCurrentDayAndTime() {
   const now = new Date();
-
-  const days = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday"
-  ];
-
-  const day = days[now.getDay()];
-
-  const time = now.toTimeString().slice(0, 8); // HH:MM:SS
-
-  return { day, time };
+  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  return {
+    day: days[now.getDay()],
+    time: now.toTimeString().slice(0, 8) // HH:MM:SS
+  };
 }
 
 function findActiveTimetableSlots(day, time) {
   return timetable.filter(slot => {
+    // ✅ FIXED: correct CSV column names (lowercase)
     return (
-      slot.Day === day &&
-      slot.Start_Time <= time &&
-      slot.End_Time >= time
+      slot.day === day &&
+      slot.start_time <= time &&
+      slot.end_time >= time
     );
   });
 }
-
 
 /* =========================
    ROUTES
 ========================= */
 
-// Home
 app.get("/", (req, res) => {
   res.send("RFID Server (SQLite + Auto CSV) is running ✅");
 });
 
-// Log RFID
 app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
+  if (!cardNo) return res.status(400).send("NO CARD NUMBER");
 
-  if (!cardNo) {
-    return res.status(400).send("NO CARD NUMBER");
-  }
-
-  // 🔹 STEP 2: IDENTIFY CARD TYPE
+  // STEP 2
   const identity = identifyCard(cardNo);
   console.log("🪪 Card Type:", identity.type);
 
-  // (NO rejection yet — that comes later)
+  // STEP 3
+  const { day, time } = getCurrentDayAndTime();
+  const activeSlots = findActiveTimetableSlots(day, time);
 
-// 🔹 STEP 3: FIND ACTIVE TIME SLOT
-const { day, time } = getCurrentDayAndTime();
-const activeSlots = findActiveTimetableSlots(day, time);
+  console.log("📅 Today:", day, "⏰ Time:", time);
+  console.log("📚 Active Slots Found:", activeSlots.length);
 
-console.log("📅 Today:", day, "⏰ Time:", time);
-console.log("📚 Active Slots Found:", activeSlots.length);
+  // STEP 4 — STUDENT VALIDATION
+  if (identity.type === "STUDENT") {
+    if (activeSlots.length === 0) {
+      console.log("❌ Rejected: No active lecture/practical");
+      return res.send("OK");
+    }
 
+    const studentClass = identity.data.class;
+    const studentBatch = identity.data.batch;
 
-  // 1️⃣ Insert into SQLite
+    const validSlot = activeSlots.find(slot => {
+      const classMatch = slot.class === studentClass;
+      const batchMatch = slot.batch === studentBatch || slot.batch === "ALL";
+      return classMatch && batchMatch;
+    });
+
+    if (!validSlot) {
+      console.log("❌ Rejected: Student not in this class/batch");
+      return res.send("OK");
+    }
+
+    console.log("✅ Student validated for session:", validSlot.subject);
+  }
+
+  // STORE ATTENDANCE
   db.run(
     `INSERT INTO attendance (card_no) VALUES (?)`,
     [cardNo],
@@ -174,16 +169,9 @@ console.log("📚 Active Slots Found:", activeSlots.length);
         return res.status(500).send("ERROR");
       }
 
-      // 2️⃣ Append to CSV
       const timestamp = new Date().toISOString();
-      const csvLine = `${cardNo},${timestamp}\n`;
-
-      fs.appendFile(csvPath, csvLine, (csvErr) => {
-        if (csvErr) {
-          console.error("❌ CSV append failed:", csvErr.message);
-        } else {
-          console.log("📌 Attendance logged:", cardNo);
-        }
+      fs.appendFile(csvPath, `${cardNo},${timestamp}\n`, () => {
+        console.log("📌 Attendance logged:", cardNo);
       });
 
       res.send("OK");
@@ -191,14 +179,9 @@ console.log("📚 Active Slots Found:", activeSlots.length);
   );
 });
 
-// Download CSV
 app.get("/download", (req, res) => {
   res.download(csvPath, "attendance.csv");
 });
-
-/* =========================
-   START SERVER
-========================= */
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
