@@ -159,6 +159,42 @@ app.get("/log", (req, res) => {
     console.log("✅ Student validated for session:", validSlot.subject);
   }
 
+// 🔹 STEP 5: STAFF VALIDATION
+if (identity.type === "STAFF") {
+  if (activeSlots.length === 0) {
+    console.log("❌ Rejected: No active lecture/practical for staff");
+    return res.send("OK");
+  }
+
+  const staffId = identity.data.staff_id;
+
+  const validSlot = activeSlots.find(slot => {
+    return slot.staff_id === staffId;
+  });
+
+  if (!validSlot) {
+    console.log("❌ Rejected: Staff not allotted in timetable");
+    return res.send("OK");
+  }
+
+  const teachingMatch = staffTeaching.find(t => {
+    return (
+      t.staff_id === staffId &&
+      t.class === validSlot.class &&
+      (t.batch === validSlot.batch || t.batch === "ALL") &&
+      t.subject === validSlot.subject
+    );
+  });
+
+  if (!teachingMatch) {
+    console.log("❌ Rejected: Staff not assigned to teach this subject/class");
+    return res.send("OK");
+  }
+
+  console.log("✅ Staff validated for session:", validSlot.subject);
+}
+
+
   // STORE ATTENDANCE
   db.run(
     `INSERT INTO attendance (card_no) VALUES (?)`,
