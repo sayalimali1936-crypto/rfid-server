@@ -72,7 +72,7 @@ const staffRoles = loadCSV("Staff_Roles.csv");
 const staffTeaching = loadCSV("Staff_Teaching.csv");
 const timetable = loadCSV("Time_Table.csv");
 
-// Log counts (VERY IMPORTANT FOR STEP 1)
+// Log counts
 console.log("📄 CSV FILES LOADED:");
 console.log("Students:", students.length);
 console.log("Staff Master:", staffMaster.length);
@@ -80,6 +80,23 @@ console.log("Staff Roles:", staffRoles.length);
 console.log("Staff Teaching:", staffTeaching.length);
 console.log("Time Table:", timetable.length);
 
+/* =========================
+   STEP 2: CARD IDENTIFICATION
+========================= */
+
+function identifyCard(cardNo) {
+  const student = students.find(s => s.card_no === cardNo);
+  if (student) {
+    return { type: "STUDENT", data: student };
+  }
+
+  const staff = staffMaster.find(s => s.card_no === cardNo);
+  if (staff) {
+    return { type: "STAFF", data: staff };
+  }
+
+  return { type: "UNKNOWN", data: null };
+}
 
 /* =========================
    ROUTES
@@ -97,6 +114,12 @@ app.get("/log", (req, res) => {
   if (!cardNo) {
     return res.status(400).send("NO CARD NUMBER");
   }
+
+  // 🔹 STEP 2: IDENTIFY CARD TYPE
+  const identity = identifyCard(cardNo);
+  console.log("🪪 Card Type:", identity.type);
+
+  // (NO rejection yet — that comes later)
 
   // 1️⃣ Insert into SQLite
   db.run(
@@ -120,12 +143,12 @@ app.get("/log", (req, res) => {
         }
       });
 
-      res.send("OK"); // ESP expects this
+      res.send("OK");
     }
   );
 });
 
-// Optional: download CSV anytime
+// Download CSV
 app.get("/download", (req, res) => {
   res.download(csvPath, "attendance.csv");
 });
