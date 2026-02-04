@@ -12,13 +12,17 @@ const PORT = process.env.PORT || 3000;
 
 const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
+const reportsDir = path.join(__dirname, "reports");
+
+if (!fs.existsSync(reportsDir)) {
+  fs.mkdirSync(reportsDir);
+}
 
 const db = new sqlite3.Database(dbPath, err => {
   if (err) console.error("❌ SQLite error:", err.message);
   else console.log("✅ SQLite connected");
 });
 
-// Attendance table
 db.run(`
   CREATE TABLE IF NOT EXISTS attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,7 +31,6 @@ db.run(`
   )
 `);
 
-// Session attendance (double scan prevention)
 db.run(`
   CREATE TABLE IF NOT EXISTS session_attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +55,7 @@ function loadCSV(file) {
   return lines.map(line => {
     const values = line.split(",");
     let obj = {};
-    headers.forEach((h, i) => (obj[h.trim()] = values[i]?.trim()));
+    headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());
     return obj;
   });
 }
@@ -88,7 +91,8 @@ function getCurrentDayTime() {
   const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   return {
     day: days[now.getDay()],
-    time: now.toTimeString().slice(0, 8)
+    time: now.toTimeString().slice(0, 8),
+    date: now.toISOString().slice(0, 10)
   };
 }
 
@@ -111,54 +115,58 @@ function generateSessionKey(slot) {
   ].join("|");
 }
 
+function appendDailyReport(data) {
+  const filePath = path.join(
+    reportsDir,
+    `attendance_${data.date}.csv`
+  );
+
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(
+      filePath,
+      "Date,Time,Card No,Role,Class,Batch,Subject\n"
+    );
+  }
+
+  fs.appendFileSync(
+    filePath,
+    `${data.date},${data.time},${data.card},${data.role},${data.class},${data.batch},${data.subject}\n`
+  );
+}
+
 /* =========================
    ROUTES
 ========================= */
 
 app.get("/", (req, res) => {
-  res.send("RFID Attendance Server is running ✅");
+  res.send("RFID Attendance Server with Daily Reports is running ✅");
 });
 
 app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
   if (!cardNo) return res.send("OK");
 
-  /* STEP 2: IDENTIFY CARD */
   const identity = identifyCard(cardNo);
   console.log("🪪 Card Type:", identity.type);
 
-  /* STEP 6: REJECT UNKNOWN */
   if (identity.type === "UNKNOWN") {
     console.log("❌ Rejected: Unknown card");
     return res.send("OK");
   }
 
-  /* STEP 3: TIME SLOT */
-  const { day, time } = getCurrentDayTime();
+  const { day, time, date } = getCurrentDayTime();
   const activeSlots = getActiveSlots(day, time);
-  console.log("📅", day, time, "Slots:", activeSlots.length);
-
   let validSlot = null;
 
-  /* STEP 4: STUDENT VALIDATION */
   if (identity.type === "STUDENT") {
-    if (activeSlots.length === 0) return res.send("OK");
-
     validSlot = activeSlots.find(s =>
       s.class === identity.data.class &&
       (s.batch === identity.data.batch || s.batch === "ALL")
     );
-
-    if (!validSlot) {
-      console.log("❌ Student wrong class/batch");
-      return res.send("OK");
-    }
+    if (!validSlot) return res.send("OK");
   }
 
-  /* STEP 5: STAFF VALIDATION */
   if (identity.type === "STAFF") {
-    if (activeSlots.length === 0) return res.send("OK");
-
     validSlot = activeSlots.find(s => s.staff_id === identity.data.staff_id);
     if (!validSlot) return res.send("OK");
 
@@ -168,11 +176,9 @@ app.get("/log", (req, res) => {
       (t.batch === validSlot.batch || t.batch === "ALL") &&
       t.subject === validSlot.subject
     );
-
     if (!teaches) return res.send("OK");
   }
 
-  /* STEP 7: DOUBLE SCAN PREVENTION */
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
@@ -189,12 +195,21 @@ app.get("/log", (req, res) => {
         [cardNo, sessionKey]
       );
 
-      /* STORE ATTENDANCE */
       db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [cardNo]);
-      fs.appendFile(csvPath, `${cardNo},${new Date().toISOString()}\n`, () => {
-        console.log("📌 Attendance logged:", cardNo);
+
+      fs.appendFile(csvPath, `${cardNo},${new Date().toISOString()}\n`, () => {});
+
+      appendDailyReport({
+        date,
+        time,
+        card: cardNo,
+        role: identity.type,
+        class: validSlot.class,
+        batch: validSlot.batch,
+        subject: validSlot.subject
       });
 
+      console.log("📌 Attendance logged:", cardNo);
       res.send("OK");
     }
   );
@@ -202,6 +217,13 @@ app.get("/log", (req, res) => {
 
 app.get("/download", (req, res) => {
   res.download(csvPath, "attendance.csv");
+});
+
+app.get("/report/today", (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const filePath = path.join(reportsDir, `attendance_${today}.csv`);
+  if (!fs.existsSync(filePath)) return res.send("No report yet");
+  res.download(filePath);
 });
 
 app.listen(PORT, () => {
