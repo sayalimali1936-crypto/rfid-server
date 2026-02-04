@@ -1,24 +1,27 @@
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
+const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* =========================
-   SQLITE DATABASE SETUP
+   DATABASE SETUP (SQLITE)
 ========================= */
 
 const dbPath = path.join(__dirname, "attendance.db");
+const csvPath = path.join(__dirname, "attendance.csv");
 
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
-    console.error("❌ Failed to connect to SQLite:", err.message);
+    console.error("❌ SQLite connection failed:", err.message);
   } else {
     console.log("✅ SQLite database connected");
   }
 });
 
+// Create table if not exists
 db.run(`
   CREATE TABLE IF NOT EXISTS attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,11 +30,17 @@ db.run(`
   )
 `, (err) => {
   if (err) {
-    console.error("❌ Failed to create table:", err.message);
+    console.error("❌ Table creation failed:", err.message);
   } else {
     console.log("✅ Attendance table ready");
   }
 });
+
+// Create CSV file with header if it doesn't exist
+if (!fs.existsSync(csvPath)) {
+  fs.writeFileSync(csvPath, "Card Number,Timestamp\n");
+  console.log("✅ CSV file created with header");
+}
 
 /* =========================
    ROUTES
@@ -39,7 +48,7 @@ db.run(`
 
 // Home
 app.get("/", (req, res) => {
-  res.send("RFID Server with SQLite is running ✅");
+  res.send("RFID Server (SQLite + Auto CSV) is running ✅");
 });
 
 // Log RFID
@@ -50,46 +59,36 @@ app.get("/log", (req, res) => {
     return res.status(400).send("NO CARD NUMBER");
   }
 
+  // 1️⃣ Insert into SQLite
   db.run(
     `INSERT INTO attendance (card_no) VALUES (?)`,
     [cardNo],
-    (err) => {
+    function (err) {
       if (err) {
-        console.error("❌ Insert failed:", err.message);
+        console.error("❌ SQLite insert failed:", err.message);
         return res.status(500).send("ERROR");
       }
 
-      console.log("📌 Attendance logged:", cardNo);
-      res.send("OK");
+      // 2️⃣ Append to CSV
+      const timestamp = new Date().toISOString();
+      const csvLine = `${cardNo},${timestamp}\n`;
+
+      fs.appendFile(csvPath, csvLine, (csvErr) => {
+        if (csvErr) {
+          console.error("❌ CSV append failed:", csvErr.message);
+        } else {
+          console.log("📌 Attendance logged:", cardNo);
+        }
+      });
+
+      res.send("OK"); // ESP expects this
     }
   );
 });
 
-// 📥 DOWNLOAD ATTENDANCE AS CSV
+// Optional: download CSV anytime
 app.get("/download", (req, res) => {
-  db.all(
-    `SELECT card_no, timestamp FROM attendance ORDER BY timestamp DESC`,
-    [],
-    (err, rows) => {
-      if (err) {
-        console.error("❌ Fetch failed:", err.message);
-        return res.status(500).send("ERROR");
-      }
-
-      let csv = "Card Number,Timestamp\n";
-      rows.forEach((row) => {
-        csv += `${row.card_no},${row.timestamp}\n`;
-      });
-
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader(
-        "Content-Disposition",
-        "attachment; filename=attendance.csv"
-      );
-
-      res.send(csv);
-    }
-  );
+  res.download(csvPath, "attendance.csv");
 });
 
 /* =========================
