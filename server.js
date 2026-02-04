@@ -7,75 +7,70 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* =========================
-   DATABASE SETUP (SQLITE)
+   DATABASE SETUP
 ========================= */
 
 const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error("❌ SQLite connection failed:", err.message);
-  } else {
-    console.log("✅ SQLite database connected");
-  }
+const db = new sqlite3.Database(dbPath, err => {
+  if (err) console.error("❌ SQLite error:", err.message);
+  else console.log("✅ SQLite connected");
 });
 
+// Attendance table
 db.run(`
   CREATE TABLE IF NOT EXISTS attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    card_no TEXT NOT NULL,
+    card_no TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   )
-`, (err) => {
-  if (err) {
-    console.error("❌ Table creation failed:", err.message);
-  } else {
-    console.log("✅ Attendance table ready");
-  }
-});
+`);
+
+// Session attendance (double scan prevention)
+db.run(`
+  CREATE TABLE IF NOT EXISTS session_attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_no TEXT,
+    session_key TEXT
+  )
+`);
 
 if (!fs.existsSync(csvPath)) {
   fs.writeFileSync(csvPath, "Card Number,Timestamp\n");
-  console.log("✅ CSV file created with header");
 }
 
 /* =========================
-   LOAD CSV FILES (STEP 1)
+   LOAD CSV FILES
 ========================= */
 
-function loadCSV(fileName) {
-  const filePath = path.join(__dirname, fileName);
-  const data = fs.readFileSync(filePath, "utf8");
-
+function loadCSV(file) {
+  const data = fs.readFileSync(path.join(__dirname, file), "utf8");
   const lines = data.trim().split("\n");
   const headers = lines.shift().split(",");
 
   return lines.map(line => {
     const values = line.split(",");
     let obj = {};
-    headers.forEach((h, i) => {
-      obj[h.trim()] = values[i]?.trim();
-    });
+    headers.forEach((h, i) => (obj[h.trim()] = values[i]?.trim()));
     return obj;
   });
 }
 
 const students = loadCSV("Students.csv");
 const staffMaster = loadCSV("Staff_Master.csv");
-const staffRoles = loadCSV("Staff_Roles.csv");
 const staffTeaching = loadCSV("Staff_Teaching.csv");
 const timetable = loadCSV("Time_Table.csv");
 
-console.log("📄 CSV FILES LOADED:");
-console.log("Students:", students.length);
-console.log("Staff Master:", staffMaster.length);
-console.log("Staff Roles:", staffRoles.length);
-console.log("Staff Teaching:", staffTeaching.length);
-console.log("Time Table:", timetable.length);
+console.log("📄 CSV Loaded:", {
+  students: students.length,
+  staff: staffMaster.length,
+  teaching: staffTeaching.length,
+  timetable: timetable.length
+});
 
 /* =========================
-   STEP 2: CARD IDENTIFICATION
+   HELPERS
 ========================= */
 
 function identifyCard(cardNo) {
@@ -88,28 +83,32 @@ function identifyCard(cardNo) {
   return { type: "UNKNOWN", data: null };
 }
 
-/* =========================
-   STEP 3: CURRENT SLOT DETECTION
-========================= */
-
-function getCurrentDayAndTime() {
+function getCurrentDayTime() {
   const now = new Date();
   const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   return {
     day: days[now.getDay()],
-    time: now.toTimeString().slice(0, 8) // HH:MM:SS
+    time: now.toTimeString().slice(0, 8)
   };
 }
 
-function findActiveTimetableSlots(day, time) {
-  return timetable.filter(slot => {
-    // ✅ FIXED: correct CSV column names (lowercase)
-    return (
-      slot.day === day &&
-      slot.start_time <= time &&
-      slot.end_time >= time
-    );
-  });
+function getActiveSlots(day, time) {
+  return timetable.filter(slot =>
+    slot.day === day &&
+    slot.start_time <= time &&
+    slot.end_time >= time
+  );
+}
+
+function generateSessionKey(slot) {
+  return [
+    slot.day,
+    slot.start_time,
+    slot.end_time,
+    slot.class,
+    slot.batch,
+    slot.subject
+  ].join("|");
 }
 
 /* =========================
@@ -117,103 +116,82 @@ function findActiveTimetableSlots(day, time) {
 ========================= */
 
 app.get("/", (req, res) => {
-  res.send("RFID Server (SQLite + Auto CSV) is running ✅");
+  res.send("RFID Attendance Server is running ✅");
 });
 
 app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
-  if (!cardNo) return res.status(400).send("NO CARD NUMBER");
+  if (!cardNo) return res.send("OK");
 
-  // STEP 2
+  /* STEP 2: IDENTIFY CARD */
   const identity = identifyCard(cardNo);
   console.log("🪪 Card Type:", identity.type);
 
-// 🔹 STEP 6: REJECT UNKNOWN CARDS
-if (identity.type === "UNKNOWN") {
-  console.log("❌ Rejected: Unknown card");
-  return res.send("OK"); // No DB, no CSV
-}
+  /* STEP 6: REJECT UNKNOWN */
+  if (identity.type === "UNKNOWN") {
+    console.log("❌ Rejected: Unknown card");
+    return res.send("OK");
+  }
 
+  /* STEP 3: TIME SLOT */
+  const { day, time } = getCurrentDayTime();
+  const activeSlots = getActiveSlots(day, time);
+  console.log("📅", day, time, "Slots:", activeSlots.length);
 
-  // STEP 3
-  const { day, time } = getCurrentDayAndTime();
-  const activeSlots = findActiveTimetableSlots(day, time);
+  let validSlot = null;
 
-  console.log("📅 Today:", day, "⏰ Time:", time);
-  console.log("📚 Active Slots Found:", activeSlots.length);
-
-  // STEP 4 — STUDENT VALIDATION
+  /* STEP 4: STUDENT VALIDATION */
   if (identity.type === "STUDENT") {
-    if (activeSlots.length === 0) {
-      console.log("❌ Rejected: No active lecture/practical");
-      return res.send("OK");
-    }
+    if (activeSlots.length === 0) return res.send("OK");
 
-    const studentClass = identity.data.class;
-    const studentBatch = identity.data.batch;
-
-    const validSlot = activeSlots.find(slot => {
-      const classMatch = slot.class === studentClass;
-      const batchMatch = slot.batch === studentBatch || slot.batch === "ALL";
-      return classMatch && batchMatch;
-    });
+    validSlot = activeSlots.find(s =>
+      s.class === identity.data.class &&
+      (s.batch === identity.data.batch || s.batch === "ALL")
+    );
 
     if (!validSlot) {
-      console.log("❌ Rejected: Student not in this class/batch");
+      console.log("❌ Student wrong class/batch");
       return res.send("OK");
     }
-
-    console.log("✅ Student validated for session:", validSlot.subject);
   }
 
-// 🔹 STEP 5: STAFF VALIDATION
-if (identity.type === "STAFF") {
-  if (activeSlots.length === 0) {
-    console.log("❌ Rejected: No active lecture/practical for staff");
-    return res.send("OK");
-  }
+  /* STEP 5: STAFF VALIDATION */
+  if (identity.type === "STAFF") {
+    if (activeSlots.length === 0) return res.send("OK");
 
-  const staffId = identity.data.staff_id;
+    validSlot = activeSlots.find(s => s.staff_id === identity.data.staff_id);
+    if (!validSlot) return res.send("OK");
 
-  const validSlot = activeSlots.find(slot => {
-    return slot.staff_id === staffId;
-  });
-
-  if (!validSlot) {
-    console.log("❌ Rejected: Staff not allotted in timetable");
-    return res.send("OK");
-  }
-
-  const teachingMatch = staffTeaching.find(t => {
-    return (
-      t.staff_id === staffId &&
+    const teaches = staffTeaching.find(t =>
+      t.staff_id === identity.data.staff_id &&
       t.class === validSlot.class &&
       (t.batch === validSlot.batch || t.batch === "ALL") &&
       t.subject === validSlot.subject
     );
-  });
 
-  if (!teachingMatch) {
-    console.log("❌ Rejected: Staff not assigned to teach this subject/class");
-    return res.send("OK");
+    if (!teaches) return res.send("OK");
   }
 
-  console.log("✅ Staff validated for session:", validSlot.subject);
-}
+  /* STEP 7: DOUBLE SCAN PREVENTION */
+  const sessionKey = generateSessionKey(validSlot);
 
-
-  // STORE ATTENDANCE
-  db.run(
-    `INSERT INTO attendance (card_no) VALUES (?)`,
-    [cardNo],
-    function (err) {
-      if (err) {
-        console.error("❌ SQLite insert failed:", err.message);
-        return res.status(500).send("ERROR");
+  db.get(
+    `SELECT 1 FROM session_attendance WHERE card_no=? AND session_key=?`,
+    [cardNo, sessionKey],
+    (err, row) => {
+      if (row) {
+        console.log("❌ Double scan blocked");
+        return res.send("OK");
       }
 
-      const timestamp = new Date().toISOString();
-      fs.appendFile(csvPath, `${cardNo},${timestamp}\n`, () => {
+      db.run(
+        `INSERT INTO session_attendance (card_no, session_key) VALUES (?, ?)`,
+        [cardNo, sessionKey]
+      );
+
+      /* STORE ATTENDANCE */
+      db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [cardNo]);
+      fs.appendFile(csvPath, `${cardNo},${new Date().toISOString()}\n`, () => {
         console.log("📌 Attendance logged:", cardNo);
       });
 
