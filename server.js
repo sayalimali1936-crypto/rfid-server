@@ -43,6 +43,45 @@ if (!fs.existsSync(csvPath)) {
 }
 
 /* =========================
+   LOAD CSV FILES (STEP 1)
+========================= */
+
+function loadCSV(fileName) {
+  const filePath = path.join(__dirname, fileName);
+  const data = fs.readFileSync(filePath, "utf8");
+
+  const lines = data.trim().split("\n");
+  const headers = lines.shift().split(",");
+
+  const records = lines.map(line => {
+    const values = line.split(",");
+    let obj = {};
+    headers.forEach((h, i) => {
+      obj[h.trim()] = values[i]?.trim();
+    });
+    return obj;
+  });
+
+  return records;
+}
+
+// Load all CSVs
+const students = loadCSV("Students.csv");
+const staffMaster = loadCSV("Staff_Master.csv");
+const staffRoles = loadCSV("Staff_Roles.csv");
+const staffTeaching = loadCSV("Staff_Teaching.csv");
+const timetable = loadCSV("Time_Table.csv");
+
+// Log counts (VERY IMPORTANT FOR STEP 1)
+console.log("📄 CSV FILES LOADED:");
+console.log("Students:", students.length);
+console.log("Staff Master:", staffMaster.length);
+console.log("Staff Roles:", staffRoles.length);
+console.log("Staff Teaching:", staffTeaching.length);
+console.log("Time Table:", timetable.length);
+
+
+/* =========================
    ROUTES
 ========================= */
 
