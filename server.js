@@ -1,73 +1,59 @@
 const express = require("express");
-const { MongoClient } = require("mongodb");
+const { MongoClient, ServerApiVersion } = require("mongodb");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/*
- Render → Environment Variable (MUST EXIST)
-
- Key   : MONGODB_URI
- Value : mongodb+srv://sayalirmali_db_user:nodemark@cluster0.p1yhjxt.mongodb.net/rfid_attendance?retryWrites=true&w=majority
-*/
-
+// MongoDB URI from Render Environment Variables
 const MONGO_URI = process.env.MONGODB_URI;
 
-let logsCollection;
+let collection;
 
-/* ============================
-   START SERVER AFTER DB READY
-============================ */
-async function startServer() {
+async function connectDB() {
   try {
-    if (!MONGO_URI) {
-      console.error("❌ MONGODB_URI not found");
-      process.exit(1);
-    }
+    const client = new MongoClient(MONGO_URI, {
+      serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+      },
+      tls: true,
+    });
 
-    const client = new MongoClient(MONGO_URI);
     await client.connect();
-
     const db = client.db("rfid_attendance");
-    logsCollection = db.collection("attendance_logs");
+    collection = db.collection("logs");
 
-    console.log("✅ MongoDB connected");
-
-    // Root route
-    app.get("/", (req, res) => {
-      res.send("RFID Attendance Server Running ✅");
-    });
-
-    // RFID log route
-    app.get("/log", async (req, res) => {
-      const cardNo = req.query.card_no;
-
-      if (!cardNo) {
-        return res.status(400).send("NO CARD");
-      }
-
-      try {
-        await logsCollection.insertOne({
-          card_no: cardNo,
-          timestamp: new Date()
-        });
-
-        console.log("📌 Attendance logged:", cardNo);
-        res.send("OK");
-      } catch (err) {
-        console.error("❌ Insert error:", err);
-        res.status(500).send("ERROR");
-      }
-    });
-
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
-
+    console.log("✅ MongoDB connected successfully");
   } catch (err) {
-    console.error("❌ MongoDB connection failed:", err);
+    console.error("❌ MongoDB connection failed:", err.message);
     process.exit(1);
   }
 }
 
-startServer();
+app.get("/", (req, res) => {
+  res.send("RFID Server Running ✅");
+});
+
+app.get("/log", async (req, res) => {
+  if (!collection) {
+    return res.status(500).send("DB NOT READY");
+  }
+
+  const card = req.query.card_no;
+  if (!card) return res.status(400).send("NO CARD");
+
+  await collection.insertOne({
+    card_no: card,
+    time: new Date(),
+  });
+
+  console.log("📌 Card logged:", card);
+  res.send("OK");
+});
+
+connectDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
+});
