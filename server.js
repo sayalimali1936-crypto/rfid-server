@@ -99,6 +99,41 @@ function identifyCard(cardNo) {
 }
 
 /* =========================
+   STEP 3: CURRENT SLOT DETECTION
+========================= */
+
+function getCurrentDayAndTime() {
+  const now = new Date();
+
+  const days = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday"
+  ];
+
+  const day = days[now.getDay()];
+
+  const time = now.toTimeString().slice(0, 8); // HH:MM:SS
+
+  return { day, time };
+}
+
+function findActiveTimetableSlots(day, time) {
+  return timetable.filter(slot => {
+    return (
+      slot.Day === day &&
+      slot.Start_Time <= time &&
+      slot.End_Time >= time
+    );
+  });
+}
+
+
+/* =========================
    ROUTES
 ========================= */
 
@@ -120,6 +155,14 @@ app.get("/log", (req, res) => {
   console.log("🪪 Card Type:", identity.type);
 
   // (NO rejection yet — that comes later)
+
+// 🔹 STEP 3: FIND ACTIVE TIME SLOT
+const { day, time } = getCurrentDayAndTime();
+const activeSlots = findActiveTimetableSlots(day, time);
+
+console.log("📅 Today:", day, "⏰ Time:", time);
+console.log("📚 Active Slots Found:", activeSlots.length);
+
 
   // 1️⃣ Insert into SQLite
   db.run(
