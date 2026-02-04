@@ -1,14 +1,13 @@
 {
   "name": "rfid-server",
   "version": "1.0.0",
-  "description": "RFID Attendance Server",
+  "description": "RFID Attendance Server (No DB)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "type": "commonjs",
   "dependencies": {
-    "express": "^4.18.2",
-    "mongodb": "^5.9.2"
+    "express": "^4.18.2"
   }
 }
