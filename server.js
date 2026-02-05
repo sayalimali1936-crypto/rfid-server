@@ -55,7 +55,9 @@ function loadCSV(file) {
   return lines.map(line => {
     const values = line.split(",");
     let obj = {};
-    headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());
+    headers.forEach((h, i) => {
+      obj[h.trim()] = values[i]?.trim();
+    });
     return obj;
   });
 }
@@ -76,11 +78,22 @@ console.log("📄 CSV Loaded:", {
    HELPERS
 ========================= */
 
+// 🔑 NORMALIZATION (CRITICAL FIX)
+function normalize(value) {
+  return value?.toString().trim().toUpperCase();
+}
+
 function identifyCard(cardNo) {
-  const student = students.find(s => s.card_no === cardNo);
+  const normalizedCard = normalize(cardNo);
+
+  const student = students.find(
+    s => normalize(s.card_no) === normalizedCard
+  );
   if (student) return { type: "STUDENT", data: student };
 
-  const staff = staffMaster.find(s => s.card_no === cardNo);
+  const staff = staffMaster.find(
+    s => normalize(s.card_no) === normalizedCard
+  );
   if (staff) return { type: "STAFF", data: staff };
 
   return { type: "UNKNOWN", data: null };
@@ -98,7 +111,7 @@ function getCurrentDayTime() {
 
 function getActiveSlots(day, time) {
   return timetable.filter(slot =>
-    slot.day === day &&
+    normalize(slot.day) === normalize(day) &&
     slot.start_time <= time &&
     slot.end_time >= time
   );
@@ -149,15 +162,14 @@ app.get("/log", (req, res) => {
   const identity = identifyCard(cardNo);
   console.log("🪪 Card Type:", identity.type);
 
-if (identity.type === "STAFF") {
-  console.log("DEBUG STAFF DATA:", identity.data);
-}
-
-
-console.log("DEBUG CARD:", cardNo);
-console.log("DEBUG STUDENT MATCH:", students.find(s => s.card_no === cardNo));
-console.log("DEBUG STAFF MATCH:", staffMaster.find(s => s.card_no === cardNo));
-
+  // 🔍 DEBUG (temporary)
+  console.log("DEBUG CARD:", cardNo);
+  console.log("DEBUG STUDENT MATCH:",
+    students.find(s => normalize(s.card_no) === normalize(cardNo))
+  );
+  console.log("DEBUG STAFF MATCH:",
+    staffMaster.find(s => normalize(s.card_no) === normalize(cardNo))
+  );
 
   if (identity.type === "UNKNOWN") {
     console.log("❌ Rejected: Unknown card");
@@ -168,32 +180,37 @@ console.log("DEBUG STAFF MATCH:", staffMaster.find(s => s.card_no === cardNo));
   const activeSlots = getActiveSlots(day, time);
   let validSlot = null;
 
+  // STUDENT VALIDATION
   if (identity.type === "STUDENT") {
     validSlot = activeSlots.find(s =>
-      s.class === identity.data.class &&
-      (s.batch === identity.data.batch || s.batch === "ALL")
+      normalize(s.class) === normalize(identity.data.class) &&
+      (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
     if (!validSlot) return res.send("OK");
   }
 
+  // STAFF VALIDATION
   if (identity.type === "STAFF") {
-    validSlot = activeSlots.find(s => s.staff_id === identity.data.staff_id);
+    validSlot = activeSlots.find(
+      s => normalize(s.staff_id) === normalize(identity.data.staff_id)
+    );
     if (!validSlot) return res.send("OK");
 
     const teaches = staffTeaching.find(t =>
-      t.staff_id === identity.data.staff_id &&
-      t.class === validSlot.class &&
-      (t.batch === validSlot.batch || t.batch === "ALL") &&
-      t.subject === validSlot.subject
+      normalize(t.staff_id) === normalize(identity.data.staff_id) &&
+      normalize(t.class) === normalize(validSlot.class) &&
+      (normalize(t.batch) === normalize(validSlot.batch) || normalize(t.batch) === "ALL") &&
+      normalize(t.subject) === normalize(validSlot.subject)
     );
     if (!teaches) return res.send("OK");
   }
 
+  // DOUBLE SCAN PREVENTION
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
     `SELECT 1 FROM session_attendance WHERE card_no=? AND session_key=?`,
-    [cardNo, sessionKey],
+    [normalize(cardNo), sessionKey],
     (err, row) => {
       if (row) {
         console.log("❌ Double scan blocked");
@@ -202,24 +219,31 @@ console.log("DEBUG STAFF MATCH:", staffMaster.find(s => s.card_no === cardNo));
 
       db.run(
         `INSERT INTO session_attendance (card_no, session_key) VALUES (?, ?)`,
-        [cardNo, sessionKey]
+        [normalize(cardNo), sessionKey]
       );
 
-      db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [cardNo]);
+      db.run(
+        `INSERT INTO attendance (card_no) VALUES (?)`,
+        [normalize(cardNo)]
+      );
 
-      fs.appendFile(csvPath, `${cardNo},${new Date().toISOString()}\n`, () => {});
+      fs.appendFile(
+        csvPath,
+        `${normalize(cardNo)},${new Date().toISOString()}\n`,
+        () => {}
+      );
 
       appendDailyReport({
         date,
         time,
-        card: cardNo,
+        card: normalize(cardNo),
         role: identity.type,
         class: validSlot.class,
         batch: validSlot.batch,
         subject: validSlot.subject
       });
 
-      console.log("📌 Attendance logged:", cardNo);
+      console.log("📌 Attendance logged:", normalize(cardNo));
       res.send("OK");
     }
   );
