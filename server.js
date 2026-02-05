@@ -62,6 +62,13 @@ const staffMaster = loadCSV("Staff_Master.csv");
 const staffTeaching = loadCSV("Staff_Teaching.csv");
 const timetable = loadCSV("Time_Table.csv");
 
+console.log("📄 CSV COUNTS:", {
+  students: students.length,
+  staff: staffMaster.length,
+  teaching: staffTeaching.length,
+  timetable: timetable.length
+});
+
 /* =========================
    HELPERS
 ========================= */
@@ -70,18 +77,14 @@ function normalize(v) {
   return v?.toString().trim().toUpperCase();
 }
 
-// Handles 101 / T101 / CS101 etc.
 function cleanStaffId(v) {
   return normalize(v).replace(/[^0-9]/g, "");
 }
 
-/* 🔥 FIXED: staff_card_no */
 function identifyCard(cardNo) {
   const card = normalize(cardNo);
 
-  const student = students.find(
-    s => normalize(s.card_no) === card
-  );
+  const student = students.find(s => normalize(s.card_no) === card);
   if (student) return { type: "STUDENT", data: student };
 
   const staff = staffMaster.find(
@@ -92,7 +95,6 @@ function identifyCard(cardNo) {
   return { type: "UNKNOWN", data: null };
 }
 
-/* ===== IST TIME ===== */
 function getCurrentDayTime() {
   const now = new Date();
   now.setHours(now.getHours() + 5);
@@ -102,16 +104,15 @@ function getCurrentDayTime() {
 
   return {
     day: days[now.getDay()],
-    time: now.toTimeString().slice(0, 8),
-    date: now.toISOString().slice(0, 10)
+    time: now.toTimeString().slice(0, 8)
   };
 }
 
 function getActiveSlots(day, time) {
-  return timetable.filter(slot =>
-    normalize(slot.day) === normalize(day) &&
-    slot.start_time <= time &&
-    slot.end_time >= time
+  return timetable.filter(s =>
+    normalize(s.day) === normalize(day) &&
+    s.start_time <= time &&
+    s.end_time >= time
   );
 }
 
@@ -138,41 +139,62 @@ app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
   if (!cardNo) return res.send("OK");
 
+  console.log("\n===============================");
+  console.log("📡 CARD SCANNED:", cardNo);
+
   const identity = identifyCard(cardNo);
+  console.log("🪪 CARD TYPE:", identity.type);
 
   if (identity.type === "UNKNOWN") {
-    console.log("❌ UNKNOWN CARD:", cardNo);
+    console.log("❌ REASON: Card not found in Students or Staff_Master");
     return res.send("OK");
   }
 
   const { day, time } = getCurrentDayTime();
   const activeSlots = getActiveSlots(day, time);
+
+  console.log("📅 DAY:", day, "| ⏰ TIME:", time);
+  console.log("📚 ACTIVE SLOTS:", activeSlots.length);
+
   let validSlot = null;
 
-  /* ===== STUDENT ===== */
+  /* ================= STUDENT ================= */
   if (identity.type === "STUDENT") {
     validSlot = activeSlots.find(s =>
       normalize(s.class) === normalize(identity.data.class) &&
       (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
-    if (!validSlot) return res.send("OK");
 
-    console.log("🎓 STUDENT ATTENDANCE");
-    console.log("Name      :", identity.data.student_name);
-    console.log("Class     :", identity.data.class);
-    console.log("Batch     :", identity.data.batch);
-    console.log("Subject   :", validSlot.subject);
-    console.log("Card No   :", normalize(cardNo));
+    if (!validSlot) {
+      console.log("❌ STUDENT REJECTED: No matching slot");
+      return res.send("OK");
+    }
+
+    console.log("🎓 STUDENT OK:", identity.data.student_name);
   }
 
-  /* ===== STAFF ===== */
+  /* ================= STAFF ================= */
   if (identity.type === "STAFF") {
     const staffId = cleanStaffId(identity.data.staff_id);
+
+    console.log("👨‍🏫 STAFF NAME:", identity.data.staff_name);
+    console.log("👨‍🏫 STAFF ID:", staffId);
+
+    console.log("🔍 CHECKING ACTIVE SLOTS FOR STAFF");
+    activeSlots.forEach(s =>
+      console.log("SLOT staff_id:", s.staff_id, "class:", s.class, "subject:", s.subject)
+    );
 
     validSlot = activeSlots.find(
       s => cleanStaffId(s.staff_id) === staffId
     );
-    if (!validSlot) return res.send("OK");
+
+    if (!validSlot) {
+      console.log("❌ STAFF REJECTED: No timetable slot with matching staff_id");
+      return res.send("OK");
+    }
+
+    console.log("✅ STAFF SLOT FOUND:", validSlot.subject);
 
     const teaches = staffTeaching.find(t =>
       cleanStaffId(t.staff_id) === staffId &&
@@ -180,42 +202,37 @@ app.get("/log", (req, res) => {
       (normalize(t.batch) === normalize(validSlot.batch) || normalize(t.batch) === "ALL") &&
       normalize(t.subject) === normalize(validSlot.subject)
     );
-    if (!teaches) return res.send("OK");
 
-    console.log("👨‍🏫 STAFF ATTENDANCE");
-    console.log("Name      :", identity.data.staff_name);
-    console.log("Staff ID  :", identity.data.staff_id);
-    console.log("Class     :", validSlot.class);
-    console.log("Batch     :", validSlot.batch);
-    console.log("Subject   :", validSlot.subject);
-    console.log("Card No   :", normalize(cardNo));
+    if (!teaches) {
+      console.log("❌ STAFF REJECTED: Not assigned in Staff_Teaching");
+      return res.send("OK");
+    }
+
+    console.log("✅ STAFF TEACHING MATCH FOUND");
   }
 
-  /* ===== DOUBLE SCAN BLOCK ===== */
+  /* ========== DOUBLE SCAN BLOCK ========== */
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
     `SELECT 1 FROM session_attendance WHERE card_no=? AND session_key=?`,
     [normalize(cardNo), sessionKey],
     (err, row) => {
-      if (row) return res.send("OK");
+      if (row) {
+        console.log("⛔ DOUBLE SCAN BLOCKED");
+        return res.send("OK");
+      }
 
       db.run(
         `INSERT INTO session_attendance (card_no, session_key) VALUES (?, ?)`,
         [normalize(cardNo), sessionKey]
       );
 
-      db.run(
-        `INSERT INTO attendance (card_no) VALUES (?)`,
-        [normalize(cardNo)]
-      );
+      db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
 
-      fs.appendFileSync(
-        csvPath,
-        `${normalize(cardNo)},${new Date().toISOString()}\n`
-      );
+      fs.appendFileSync(csvPath, `${normalize(cardNo)},${new Date().toISOString()}\n`);
 
-      console.log("✅ ATTENDANCE LOGGED\n");
+      console.log("✅ ATTENDANCE LOGGED SUCCESSFULLY");
       res.send("OK");
     }
   );
