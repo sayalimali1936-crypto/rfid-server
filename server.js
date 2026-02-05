@@ -12,9 +12,6 @@ const PORT = process.env.PORT || 3000;
 
 const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
-const reportsDir = path.join(__dirname, "reports");
-
-if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir);
 
 const db = new sqlite3.Database(dbPath, err => {
   if (err) console.error("❌ SQLite error:", err.message);
@@ -53,7 +50,9 @@ function loadCSV(file) {
   return lines.map(line => {
     const values = line.split(",");
     let obj = {};
-    headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());
+    headers.forEach((h, i) => {
+      obj[h.trim()] = values[i]?.trim();
+    });
     return obj;
   });
 }
@@ -76,19 +75,24 @@ function cleanStaffId(v) {
   return normalize(v).replace(/[^0-9]/g, "");
 }
 
+/* 🔥 FIXED: staff_card_no */
 function identifyCard(cardNo) {
   const card = normalize(cardNo);
 
-  const student = students.find(s => normalize(s.card_no) === card);
+  const student = students.find(
+    s => normalize(s.card_no) === card
+  );
   if (student) return { type: "STUDENT", data: student };
 
-  const staff = staffMaster.find(s => normalize(s.card_no) === card);
+  const staff = staffMaster.find(
+    s => normalize(s.staff_card_no) === card
+  );
   if (staff) return { type: "STAFF", data: staff };
 
   return { type: "UNKNOWN", data: null };
 }
 
-/* ===== IST TIME FIX ===== */
+/* ===== IST TIME ===== */
 function getCurrentDayTime() {
   const now = new Date();
   now.setHours(now.getHours() + 5);
@@ -141,7 +145,7 @@ app.get("/log", (req, res) => {
     return res.send("OK");
   }
 
-  const { day, time, date } = getCurrentDayTime();
+  const { day, time } = getCurrentDayTime();
   const activeSlots = getActiveSlots(day, time);
   let validSlot = null;
 
