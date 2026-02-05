@@ -71,6 +71,7 @@ function normalize(v) {
   return v?.toString().trim().toUpperCase();
 }
 
+// Handles 101 / T101 / CS101 etc.
 function cleanStaffId(v) {
   return normalize(v).replace(/[^0-9]/g, "");
 }
@@ -87,9 +88,14 @@ function identifyCard(cardNo) {
   return { type: "UNKNOWN", data: null };
 }
 
+/* ===== IST TIME FIX ===== */
 function getCurrentDayTime() {
   const now = new Date();
+  now.setHours(now.getHours() + 5);
+  now.setMinutes(now.getMinutes() + 30);
+
   const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
   return {
     day: days[now.getDay()],
     time: now.toTimeString().slice(0, 8),
@@ -129,50 +135,40 @@ app.get("/log", (req, res) => {
   if (!cardNo) return res.send("OK");
 
   const identity = identifyCard(cardNo);
-  console.log("🪪 Card Type:", identity.type);
 
   if (identity.type === "UNKNOWN") {
-    console.log("❌ Rejected: Unknown card");
+    console.log("❌ UNKNOWN CARD:", cardNo);
     return res.send("OK");
   }
 
   const { day, time, date } = getCurrentDayTime();
   const activeSlots = getActiveSlots(day, time);
-
-  /* 🔍 REQUIRED DEBUG LOGS */
-  console.log("📅 Today:", day, "⏰ Time:", time);
-  console.log("📚 ACTIVE SLOTS COUNT:", activeSlots.length);
-
-  if (identity.type === "STAFF") {
-    console.log("👨‍🏫 STAFF ID (MASTER):", identity.data.staff_id);
-    console.log(
-      "🧾 SLOT STAFF IDS:",
-      activeSlots.map(s => s.staff_id)
-    );
-  }
-
   let validSlot = null;
 
-  /* -------- STUDENT -------- */
+  /* ===== STUDENT ===== */
   if (identity.type === "STUDENT") {
     validSlot = activeSlots.find(s =>
       normalize(s.class) === normalize(identity.data.class) &&
       (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
     if (!validSlot) return res.send("OK");
+
+    console.log("🎓 STUDENT ATTENDANCE");
+    console.log("Name      :", identity.data.student_name);
+    console.log("Class     :", identity.data.class);
+    console.log("Batch     :", identity.data.batch);
+    console.log("Subject   :", validSlot.subject);
+    console.log("Card No   :", normalize(cardNo));
   }
 
-  /* -------- STAFF -------- */
+  /* ===== STAFF ===== */
   if (identity.type === "STAFF") {
     const staffId = cleanStaffId(identity.data.staff_id);
 
     validSlot = activeSlots.find(
       s => cleanStaffId(s.staff_id) === staffId
     );
-    if (!validSlot) {
-      console.log("❌ Staff not matched with active slot");
-      return res.send("OK");
-    }
+    if (!validSlot) return res.send("OK");
 
     const teaches = staffTeaching.find(t =>
       cleanStaffId(t.staff_id) === staffId &&
@@ -180,24 +176,25 @@ app.get("/log", (req, res) => {
       (normalize(t.batch) === normalize(validSlot.batch) || normalize(t.batch) === "ALL") &&
       normalize(t.subject) === normalize(validSlot.subject)
     );
+    if (!teaches) return res.send("OK");
 
-    if (!teaches) {
-      console.log("❌ Staff not found in Staff_Teaching");
-      return res.send("OK");
-    }
+    console.log("👨‍🏫 STAFF ATTENDANCE");
+    console.log("Name      :", identity.data.staff_name);
+    console.log("Staff ID  :", identity.data.staff_id);
+    console.log("Class     :", validSlot.class);
+    console.log("Batch     :", validSlot.batch);
+    console.log("Subject   :", validSlot.subject);
+    console.log("Card No   :", normalize(cardNo));
   }
 
-  /* -------- DOUBLE SCAN -------- */
+  /* ===== DOUBLE SCAN BLOCK ===== */
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
     `SELECT 1 FROM session_attendance WHERE card_no=? AND session_key=?`,
     [normalize(cardNo), sessionKey],
     (err, row) => {
-      if (row) {
-        console.log("❌ Double scan blocked");
-        return res.send("OK");
-      }
+      if (row) return res.send("OK");
 
       db.run(
         `INSERT INTO session_attendance (card_no, session_key) VALUES (?, ?)`,
@@ -214,7 +211,7 @@ app.get("/log", (req, res) => {
         `${normalize(cardNo)},${new Date().toISOString()}\n`
       );
 
-      console.log("✅ ATTENDANCE LOGGED:", normalize(cardNo));
+      console.log("✅ ATTENDANCE LOGGED\n");
       res.send("OK");
     }
   );
