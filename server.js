@@ -14,17 +14,14 @@ const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 const reportsDir = path.join(__dirname, "reports");
 
-if (!fs.existsSync(reportsDir)) {
-  fs.mkdirSync(reportsDir);
-}
+if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir);
 
 /* =========================
    DATABASE SETUP
 ========================= */
 
 const db = new sqlite3.Database(dbPath, err => {
-  if (err) console.error("❌ SQLite error:", err.message);
-  else console.log("✅ SQLite connected");
+  if (err) console.error("SQLite error:", err.message);
 });
 
 db.run(`
@@ -69,13 +66,6 @@ const staffMaster = loadCSV("Staff_Master.csv");
 const staffTeaching = loadCSV("Staff_Teaching.csv");
 const timetable = loadCSV("Time_Table.csv");
 
-console.log("📄 CSV LOADED:", {
-  students: students.length,
-  staff: staffMaster.length,
-  teaching: staffTeaching.length,
-  timetable: timetable.length
-});
-
 /* =========================
    HELPERS
 ========================= */
@@ -94,9 +84,7 @@ function identifyCard(cardNo) {
   const student = students.find(s => normalize(s.card_no) === card);
   if (student) return { type: "STUDENT", data: student };
 
-  const staff = staffMaster.find(
-    s => normalize(s.staff_card_no) === card
-  );
+  const staff = staffMaster.find(s => normalize(s.staff_card_no) === card);
   if (staff) return { type: "STAFF", data: staff };
 
   return { type: "UNKNOWN", data: null };
@@ -140,24 +128,16 @@ function generateSessionKey(slot) {
 ========================= */
 
 app.get("/", (req, res) => {
-  res.send("RFID Attendance Server running ✅");
+  res.send("RFID Attendance Server running");
 });
 
-/* ===== MAIN LOG ROUTE ===== */
 app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
-  if (!cardNo) {
-    console.log("❌ No card number received");
-    return res.send("OK");
-  }
-
-  console.log("\n📡 CARD SCANNED:", cardNo);
+  if (!cardNo) return res.send("OK");
 
   const identity = identifyCard(cardNo);
-  console.log("🪪 CARD TYPE:", identity.type);
-
   if (identity.type === "UNKNOWN") {
-    console.log("❌ REJECTED: Unknown card");
+    console.log("❌ UNKNOWN CARD:", cardNo);
     return res.send("OK");
   }
 
@@ -171,27 +151,23 @@ app.get("/log", (req, res) => {
       normalize(s.class) === normalize(identity.data.class) &&
       (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
+    if (!validSlot) return res.send("OK");
 
-    if (!validSlot) {
-      console.log("❌ STUDENT REJECTED: No active slot");
-      return res.send("OK");
-    }
-
-    console.log("🎓 STUDENT ACCEPTED:", identity.data.student_name);
+    console.log("\n🎓 STUDENT ATTENDANCE");
+    console.log("Name      :", identity.data.student_name);
+    console.log("Roll No   :", identity.data.roll_no);
+    console.log("Class     :", identity.data.class);
+    console.log("Batch     :", identity.data.batch);
+    console.log("Subject   :", validSlot.subject);
+    console.log("Card No   :", normalize(cardNo));
   }
 
   /* ===== STAFF ===== */
   if (identity.type === "STAFF") {
     const staffId = cleanStaffId(identity.data.staff_id);
 
-    validSlot = activeSlots.find(
-      s => cleanStaffId(s.staff_id) === staffId
-    );
-
-    if (!validSlot) {
-      console.log("❌ STAFF REJECTED: No active slot");
-      return res.send("OK");
-    }
+    validSlot = activeSlots.find(s => cleanStaffId(s.staff_id) === staffId);
+    if (!validSlot) return res.send("OK");
 
     const teaches = staffTeaching.find(t =>
       cleanStaffId(t.staff_id) === staffId &&
@@ -199,52 +175,39 @@ app.get("/log", (req, res) => {
       (normalize(t.batch) === normalize(validSlot.batch) || normalize(t.batch) === "ALL") &&
       normalize(t.subject) === normalize(validSlot.subject)
     );
+    if (!teaches) return res.send("OK");
 
-    if (!teaches) {
-      console.log("❌ STAFF REJECTED: Not assigned");
-      return res.send("OK");
-    }
-
-    console.log("👨‍🏫 STAFF ACCEPTED:", identity.data.staff_name);
+    console.log("\n👨‍🏫 STAFF ATTENDANCE");
+    console.log("Name      :", identity.data.staff_name);
+    console.log("Staff ID  :", identity.data.staff_id);
+    console.log("Class     :", validSlot.class);
+    console.log("Batch     :", validSlot.batch);
+    console.log("Subject   :", validSlot.subject);
+    console.log("Card No   :", normalize(cardNo));
   }
 
+  /* ===== DOUBLE SCAN BLOCK ===== */
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
     `SELECT 1 FROM session_attendance WHERE card_no=? AND session_key=?`,
     [normalize(cardNo), sessionKey],
     (err, row) => {
-      if (row) {
-        console.log("⛔ DUPLICATE SCAN BLOCKED");
-        return res.send("OK");
-      }
+      if (row) return res.send("OK");
 
       db.run(
         `INSERT INTO session_attendance (card_no, session_key) VALUES (?, ?)`,
         [normalize(cardNo), sessionKey]
       );
 
-      db.run(
-        `INSERT INTO attendance (card_no) VALUES (?)`,
-        [normalize(cardNo)]
-      );
+      db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
 
-      fs.appendFileSync(
-        csvPath,
-        `${normalize(cardNo)},${new Date().toISOString()}\n`
-      );
+      fs.appendFileSync(csvPath, `${normalize(cardNo)},${new Date().toISOString()}\n`);
 
       /* ===== DAILY REPORT ===== */
-      const reportFile = path.join(
-        reportsDir,
-        `attendance_${date}.csv`
-      );
-
+      const reportFile = path.join(reportsDir, `attendance_${date}.csv`);
       if (!fs.existsSync(reportFile)) {
-        fs.writeFileSync(
-          reportFile,
-          "Date,Time,Card No,Role,Class,Batch,Subject\n"
-        );
+        fs.writeFileSync(reportFile, "Date,Time,Card No,Role,Class,Batch,Subject\n");
       }
 
       fs.appendFileSync(
@@ -252,7 +215,7 @@ app.get("/log", (req, res) => {
         `${date},${time},${normalize(cardNo)},${identity.type},${validSlot.class},${validSlot.batch},${validSlot.subject}\n`
       );
 
-      console.log("✅ ATTENDANCE LOGGED");
+      console.log("✅ ATTENDANCE LOGGED\n");
       res.send("OK");
     }
   );
@@ -265,11 +228,11 @@ app.get("/download", (req, res) => {
 
 /* ===== DOWNLOAD TODAY REPORT ===== */
 app.get("/report/today", (req, res) => {
-  const today = new Date();
-  today.setHours(today.getHours() + 5);
-  today.setMinutes(today.getMinutes() + 30);
+  const now = new Date();
+  now.setHours(now.getHours() + 5);
+  now.setMinutes(now.getMinutes() + 30);
 
-  const date = today.toISOString().slice(0, 10);
+  const date = now.toISOString().slice(0, 10);
   const reportFile = path.join(reportsDir, `attendance_${date}.csv`);
 
   if (!fs.existsSync(reportFile)) {
