@@ -14,7 +14,8 @@ const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 
 const db = new sqlite3.Database(dbPath, err => {
-  if (err) console.error("SQLite error:", err.message);
+  if (err) console.error("❌ SQLite error:", err.message);
+  else console.log("✅ SQLite connected");
 });
 
 db.run(`
@@ -49,9 +50,7 @@ function loadCSV(file) {
   return lines.map(line => {
     const values = line.split(",");
     let obj = {};
-    headers.forEach((h, i) => {
-      obj[h.trim()] = values[i]?.trim();
-    });
+    headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());
     return obj;
   });
 }
@@ -60,6 +59,13 @@ const students = loadCSV("Students.csv");
 const staffMaster = loadCSV("Staff_Master.csv");
 const staffTeaching = loadCSV("Staff_Teaching.csv");
 const timetable = loadCSV("Time_Table.csv");
+
+console.log("📄 CSV LOADED:", {
+  students: students.length,
+  staff: staffMaster.length,
+  teaching: staffTeaching.length,
+  timetable: timetable.length
+});
 
 /* =========================
    HELPERS
@@ -129,13 +135,28 @@ app.get("/", (req, res) => {
 
 app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
-  if (!cardNo) return res.send("OK");
+  if (!cardNo) {
+    console.log("❌ ERROR: No card number received");
+    return res.send("OK");
+  }
+
+  console.log("\n==============================");
+  console.log("📡 CARD SCANNED:", cardNo);
 
   const identity = identifyCard(cardNo);
-  if (identity.type === "UNKNOWN") return res.send("OK");
+  console.log("🪪 CARD TYPE:", identity.type);
+
+  if (identity.type === "UNKNOWN") {
+    console.log("❌ REJECTED: Card not found in database");
+    return res.send("OK");
+  }
 
   const { day, time } = getCurrentDayTime();
   const activeSlots = getActiveSlots(day, time);
+
+  console.log("📅 DAY:", day, "| ⏰ TIME:", time);
+  console.log("📚 ACTIVE SLOTS:", activeSlots.length);
+
   let validSlot = null;
 
   /* ===== STUDENT ===== */
@@ -144,7 +165,17 @@ app.get("/log", (req, res) => {
       normalize(s.class) === normalize(identity.data.class) &&
       (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
-    if (!validSlot) return res.send("OK");
+
+    if (!validSlot) {
+      console.log("❌ STUDENT REJECTED: No valid lecture/practical");
+      return res.send("OK");
+    }
+
+    console.log("🎓 STUDENT ACCEPTED");
+    console.log("Name :", identity.data.student_name);
+    console.log("Class:", identity.data.class);
+    console.log("Batch:", identity.data.batch);
+    console.log("Subject:", validSlot.subject);
   }
 
   /* ===== STAFF ===== */
@@ -154,7 +185,11 @@ app.get("/log", (req, res) => {
     validSlot = activeSlots.find(
       s => cleanStaffId(s.staff_id) === staffId
     );
-    if (!validSlot) return res.send("OK");
+
+    if (!validSlot) {
+      console.log("❌ STAFF REJECTED: No timetable slot allotted");
+      return res.send("OK");
+    }
 
     const teaches = staffTeaching.find(t =>
       cleanStaffId(t.staff_id) === staffId &&
@@ -162,17 +197,31 @@ app.get("/log", (req, res) => {
       (normalize(t.batch) === normalize(validSlot.batch) || normalize(t.batch) === "ALL") &&
       normalize(t.subject) === normalize(validSlot.subject)
     );
-    if (!teaches) return res.send("OK");
+
+    if (!teaches) {
+      console.log("❌ STAFF REJECTED: Not assigned to teach this subject");
+      return res.send("OK");
+    }
+
+    console.log("👨‍🏫 STAFF ACCEPTED");
+    console.log("Name :", identity.data.staff_name);
+    console.log("Staff ID:", identity.data.staff_id);
+    console.log("Class:", validSlot.class);
+    console.log("Batch:", validSlot.batch);
+    console.log("Subject:", validSlot.subject);
   }
 
-  /* ===== DOUBLE SCAN BLOCK ===== */
+  /* ===== DOUBLE SCAN ===== */
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
     `SELECT 1 FROM session_attendance WHERE card_no=? AND session_key=?`,
     [normalize(cardNo), sessionKey],
     (err, row) => {
-      if (row) return res.send("OK");
+      if (row) {
+        console.log("⛔ REJECTED: Duplicate scan in same session");
+        return res.send("OK");
+      }
 
       db.run(
         `INSERT INTO session_attendance (card_no, session_key) VALUES (?, ?)`,
@@ -189,11 +238,12 @@ app.get("/log", (req, res) => {
         `${normalize(cardNo)},${new Date().toISOString()}\n`
       );
 
+      console.log("✅ ATTENDANCE LOGGED SUCCESSFULLY");
       res.send("OK");
     }
   );
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
