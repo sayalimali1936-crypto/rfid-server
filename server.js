@@ -63,38 +63,26 @@ const staffMaster = loadCSV("Staff_Master.csv");
 const staffTeaching = loadCSV("Staff_Teaching.csv");
 const timetable = loadCSV("Time_Table.csv");
 
-console.log("📄 CSV Loaded:", {
-  students: students.length,
-  staff: staffMaster.length,
-  teaching: staffTeaching.length,
-  timetable: timetable.length
-});
-
 /* =========================
-   HELPERS (IMPORTANT)
+   HELPERS
 ========================= */
 
-// Normalize ANY string (card_no, staff_id, class, batch)
-function normalize(value) {
-  return value?.toString().trim().toUpperCase();
+function normalize(v) {
+  return v?.toString().trim().toUpperCase();
 }
 
-// Normalize staff_id (handles T101 vs 101)
-function normalizeStaffId(value) {
-  return normalize(value).replace(/^T/, "");
+// 🔑 KEY STAFF FIX
+function cleanStaffId(v) {
+  return normalize(v).replace(/[^0-9]/g, "");
 }
 
 function identifyCard(cardNo) {
   const card = normalize(cardNo);
 
-  const student = students.find(
-    s => normalize(s.card_no) === card
-  );
+  const student = students.find(s => normalize(s.card_no) === card);
   if (student) return { type: "STUDENT", data: student };
 
-  const staff = staffMaster.find(
-    s => normalize(s.card_no) === card
-  );
+  const staff = staffMaster.find(s => normalize(s.card_no) === card);
   if (staff) return { type: "STAFF", data: staff };
 
   return { type: "UNKNOWN", data: null };
@@ -150,7 +138,7 @@ function appendDailyReport(data) {
 ========================= */
 
 app.get("/", (req, res) => {
-  res.send("RFID Attendance Server is running ✅");
+  res.send("RFID Attendance Server running ✅");
 });
 
 app.get("/log", (req, res) => {
@@ -158,18 +146,13 @@ app.get("/log", (req, res) => {
   if (!cardNo) return res.send("OK");
 
   const identity = identifyCard(cardNo);
-  console.log("🪪 Card Type:", identity.type);
-
-  if (identity.type === "UNKNOWN") {
-    console.log("❌ Rejected: Unknown card");
-    return res.send("OK");
-  }
+  if (identity.type === "UNKNOWN") return res.send("OK");
 
   const { day, time, date } = getCurrentDayTime();
   const activeSlots = getActiveSlots(day, time);
   let validSlot = null;
 
-  /* -------- STUDENT VALIDATION -------- */
+  /* -------- STUDENT -------- */
   if (identity.type === "STUDENT") {
     validSlot = activeSlots.find(s =>
       normalize(s.class) === normalize(identity.data.class) &&
@@ -178,17 +161,17 @@ app.get("/log", (req, res) => {
     if (!validSlot) return res.send("OK");
   }
 
-  /* -------- STAFF VALIDATION (FIXED) -------- */
+  /* -------- STAFF (FIXED) -------- */
   if (identity.type === "STAFF") {
-    const staffId = normalizeStaffId(identity.data.staff_id);
+    const staffId = cleanStaffId(identity.data.staff_id);
 
     validSlot = activeSlots.find(
-      s => normalizeStaffId(s.staff_id) === staffId
+      s => cleanStaffId(s.staff_id) === staffId
     );
     if (!validSlot) return res.send("OK");
 
     const teaches = staffTeaching.find(t =>
-      normalizeStaffId(t.staff_id) === staffId &&
+      cleanStaffId(t.staff_id) === staffId &&
       normalize(t.class) === normalize(validSlot.class) &&
       (normalize(t.batch) === normalize(validSlot.batch) || normalize(t.batch) === "ALL") &&
       normalize(t.subject) === normalize(validSlot.subject)
@@ -196,17 +179,14 @@ app.get("/log", (req, res) => {
     if (!teaches) return res.send("OK");
   }
 
-  /* -------- DOUBLE SCAN PREVENTION -------- */
+  /* -------- DOUBLE SCAN BLOCK -------- */
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
     `SELECT 1 FROM session_attendance WHERE card_no=? AND session_key=?`,
     [normalize(cardNo), sessionKey],
     (err, row) => {
-      if (row) {
-        console.log("❌ Double scan blocked");
-        return res.send("OK");
-      }
+      if (row) return res.send("OK");
 
       db.run(
         `INSERT INTO session_attendance (card_no, session_key) VALUES (?, ?)`,
@@ -233,7 +213,6 @@ app.get("/log", (req, res) => {
         subject: validSlot.subject
       });
 
-      console.log("📌 Attendance logged:", normalize(cardNo));
       res.send("OK");
     }
   );
