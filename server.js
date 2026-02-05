@@ -149,6 +149,11 @@ app.get("/log", (req, res) => {
   const identity = identifyCard(cardNo);
   console.log("🪪 Card Type:", identity.type);
 
+console.log("DEBUG CARD:", cardNo);
+console.log("DEBUG STUDENT MATCH:", students.find(s => s.card_no === cardNo));
+console.log("DEBUG STAFF MATCH:", staffMaster.find(s => s.card_no === cardNo));
+
+
   if (identity.type === "UNKNOWN") {
     console.log("❌ Rejected: Unknown card");
     return res.send("OK");
