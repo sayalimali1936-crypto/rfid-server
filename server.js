@@ -71,7 +71,6 @@ function normalize(v) {
   return v?.toString().trim().toUpperCase();
 }
 
-// 🔑 KEY STAFF FIX
 function cleanStaffId(v) {
   return normalize(v).replace(/[^0-9]/g, "");
 }
@@ -117,22 +116,6 @@ function generateSessionKey(slot) {
   ].join("|");
 }
 
-function appendDailyReport(data) {
-  const filePath = path.join(reportsDir, `attendance_${data.date}.csv`);
-
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(
-      filePath,
-      "Date,Time,Card No,Role,Class,Batch,Subject\n"
-    );
-  }
-
-  fs.appendFileSync(
-    filePath,
-    `${data.date},${data.time},${data.card},${data.role},${data.class},${data.batch},${data.subject}\n`
-  );
-}
-
 /* =========================
    ROUTES
 ========================= */
@@ -146,10 +129,28 @@ app.get("/log", (req, res) => {
   if (!cardNo) return res.send("OK");
 
   const identity = identifyCard(cardNo);
-  if (identity.type === "UNKNOWN") return res.send("OK");
+  console.log("🪪 Card Type:", identity.type);
+
+  if (identity.type === "UNKNOWN") {
+    console.log("❌ Rejected: Unknown card");
+    return res.send("OK");
+  }
 
   const { day, time, date } = getCurrentDayTime();
   const activeSlots = getActiveSlots(day, time);
+
+  /* 🔍 REQUIRED DEBUG LOGS */
+  console.log("📅 Today:", day, "⏰ Time:", time);
+  console.log("📚 ACTIVE SLOTS COUNT:", activeSlots.length);
+
+  if (identity.type === "STAFF") {
+    console.log("👨‍🏫 STAFF ID (MASTER):", identity.data.staff_id);
+    console.log(
+      "🧾 SLOT STAFF IDS:",
+      activeSlots.map(s => s.staff_id)
+    );
+  }
+
   let validSlot = null;
 
   /* -------- STUDENT -------- */
@@ -161,14 +162,17 @@ app.get("/log", (req, res) => {
     if (!validSlot) return res.send("OK");
   }
 
-  /* -------- STAFF (FIXED) -------- */
+  /* -------- STAFF -------- */
   if (identity.type === "STAFF") {
     const staffId = cleanStaffId(identity.data.staff_id);
 
     validSlot = activeSlots.find(
       s => cleanStaffId(s.staff_id) === staffId
     );
-    if (!validSlot) return res.send("OK");
+    if (!validSlot) {
+      console.log("❌ Staff not matched with active slot");
+      return res.send("OK");
+    }
 
     const teaches = staffTeaching.find(t =>
       cleanStaffId(t.staff_id) === staffId &&
@@ -176,17 +180,24 @@ app.get("/log", (req, res) => {
       (normalize(t.batch) === normalize(validSlot.batch) || normalize(t.batch) === "ALL") &&
       normalize(t.subject) === normalize(validSlot.subject)
     );
-    if (!teaches) return res.send("OK");
+
+    if (!teaches) {
+      console.log("❌ Staff not found in Staff_Teaching");
+      return res.send("OK");
+    }
   }
 
-  /* -------- DOUBLE SCAN BLOCK -------- */
+  /* -------- DOUBLE SCAN -------- */
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
     `SELECT 1 FROM session_attendance WHERE card_no=? AND session_key=?`,
     [normalize(cardNo), sessionKey],
     (err, row) => {
-      if (row) return res.send("OK");
+      if (row) {
+        console.log("❌ Double scan blocked");
+        return res.send("OK");
+      }
 
       db.run(
         `INSERT INTO session_attendance (card_no, session_key) VALUES (?, ?)`,
@@ -203,30 +214,10 @@ app.get("/log", (req, res) => {
         `${normalize(cardNo)},${new Date().toISOString()}\n`
       );
 
-      appendDailyReport({
-        date,
-        time,
-        card: normalize(cardNo),
-        role: identity.type,
-        class: validSlot.class,
-        batch: validSlot.batch,
-        subject: validSlot.subject
-      });
-
+      console.log("✅ ATTENDANCE LOGGED:", normalize(cardNo));
       res.send("OK");
     }
   );
-});
-
-app.get("/download", (req, res) => {
-  res.download(csvPath, "attendance.csv");
-});
-
-app.get("/report/today", (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const filePath = path.join(reportsDir, `attendance_${today}.csv`);
-  if (!fs.existsSync(filePath)) return res.send("No report yet");
-  res.download(filePath);
 });
 
 app.listen(PORT, () => {
