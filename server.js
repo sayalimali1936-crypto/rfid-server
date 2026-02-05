@@ -14,9 +14,7 @@ const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 const reportsDir = path.join(__dirname, "reports");
 
-if (!fs.existsSync(reportsDir)) {
-  fs.mkdirSync(reportsDir);
-}
+if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir);
 
 const db = new sqlite3.Database(dbPath, err => {
   if (err) console.error("❌ SQLite error:", err.message);
@@ -55,9 +53,7 @@ function loadCSV(file) {
   return lines.map(line => {
     const values = line.split(",");
     let obj = {};
-    headers.forEach((h, i) => {
-      obj[h.trim()] = values[i]?.trim();
-    });
+    headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());
     return obj;
   });
 }
@@ -75,24 +71,29 @@ console.log("📄 CSV Loaded:", {
 });
 
 /* =========================
-   HELPERS
+   HELPERS (IMPORTANT)
 ========================= */
 
-// 🔑 NORMALIZATION (CRITICAL FIX)
+// Normalize ANY string (card_no, staff_id, class, batch)
 function normalize(value) {
   return value?.toString().trim().toUpperCase();
 }
 
+// Normalize staff_id (handles T101 vs 101)
+function normalizeStaffId(value) {
+  return normalize(value).replace(/^T/, "");
+}
+
 function identifyCard(cardNo) {
-  const normalizedCard = normalize(cardNo);
+  const card = normalize(cardNo);
 
   const student = students.find(
-    s => normalize(s.card_no) === normalizedCard
+    s => normalize(s.card_no) === card
   );
   if (student) return { type: "STUDENT", data: student };
 
   const staff = staffMaster.find(
-    s => normalize(s.card_no) === normalizedCard
+    s => normalize(s.card_no) === card
   );
   if (staff) return { type: "STAFF", data: staff };
 
@@ -129,10 +130,7 @@ function generateSessionKey(slot) {
 }
 
 function appendDailyReport(data) {
-  const filePath = path.join(
-    reportsDir,
-    `attendance_${data.date}.csv`
-  );
+  const filePath = path.join(reportsDir, `attendance_${data.date}.csv`);
 
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(
@@ -152,7 +150,7 @@ function appendDailyReport(data) {
 ========================= */
 
 app.get("/", (req, res) => {
-  res.send("RFID Attendance Server with Daily Reports is running ✅");
+  res.send("RFID Attendance Server is running ✅");
 });
 
 app.get("/log", (req, res) => {
@@ -161,15 +159,6 @@ app.get("/log", (req, res) => {
 
   const identity = identifyCard(cardNo);
   console.log("🪪 Card Type:", identity.type);
-
-  // 🔍 DEBUG (temporary)
-  console.log("DEBUG CARD:", cardNo);
-  console.log("DEBUG STUDENT MATCH:",
-    students.find(s => normalize(s.card_no) === normalize(cardNo))
-  );
-  console.log("DEBUG STAFF MATCH:",
-    staffMaster.find(s => normalize(s.card_no) === normalize(cardNo))
-  );
 
   if (identity.type === "UNKNOWN") {
     console.log("❌ Rejected: Unknown card");
@@ -180,7 +169,7 @@ app.get("/log", (req, res) => {
   const activeSlots = getActiveSlots(day, time);
   let validSlot = null;
 
-  // STUDENT VALIDATION
+  /* -------- STUDENT VALIDATION -------- */
   if (identity.type === "STUDENT") {
     validSlot = activeSlots.find(s =>
       normalize(s.class) === normalize(identity.data.class) &&
@@ -189,15 +178,17 @@ app.get("/log", (req, res) => {
     if (!validSlot) return res.send("OK");
   }
 
-  // STAFF VALIDATION
+  /* -------- STAFF VALIDATION (FIXED) -------- */
   if (identity.type === "STAFF") {
+    const staffId = normalizeStaffId(identity.data.staff_id);
+
     validSlot = activeSlots.find(
-      s => normalize(s.staff_id) === normalize(identity.data.staff_id)
+      s => normalizeStaffId(s.staff_id) === staffId
     );
     if (!validSlot) return res.send("OK");
 
     const teaches = staffTeaching.find(t =>
-      normalize(t.staff_id) === normalize(identity.data.staff_id) &&
+      normalizeStaffId(t.staff_id) === staffId &&
       normalize(t.class) === normalize(validSlot.class) &&
       (normalize(t.batch) === normalize(validSlot.batch) || normalize(t.batch) === "ALL") &&
       normalize(t.subject) === normalize(validSlot.subject)
@@ -205,7 +196,7 @@ app.get("/log", (req, res) => {
     if (!teaches) return res.send("OK");
   }
 
-  // DOUBLE SCAN PREVENTION
+  /* -------- DOUBLE SCAN PREVENTION -------- */
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
@@ -227,10 +218,9 @@ app.get("/log", (req, res) => {
         [normalize(cardNo)]
       );
 
-      fs.appendFile(
+      fs.appendFileSync(
         csvPath,
-        `${normalize(cardNo)},${new Date().toISOString()}\n`,
-        () => {}
+        `${normalize(cardNo)},${new Date().toISOString()}\n`
       );
 
       appendDailyReport({
