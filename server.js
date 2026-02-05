@@ -7,11 +7,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* =========================
-   DATABASE SETUP
+   PATHS
 ========================= */
 
 const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
+const reportsDir = path.join(__dirname, "reports");
+
+if (!fs.existsSync(reportsDir)) {
+  fs.mkdirSync(reportsDir);
+}
+
+/* =========================
+   DATABASE SETUP
+========================= */
 
 const db = new sqlite3.Database(dbPath, err => {
   if (err) console.error("❌ SQLite error:", err.message);
@@ -102,7 +111,8 @@ function getCurrentDayTime() {
 
   return {
     day: days[now.getDay()],
-    time: now.toTimeString().slice(0, 8)
+    time: now.toTimeString().slice(0, 8),
+    date: now.toISOString().slice(0, 10)
   };
 }
 
@@ -130,33 +140,29 @@ function generateSessionKey(slot) {
 ========================= */
 
 app.get("/", (req, res) => {
-  res.send("RFID Attendance Server running");
+  res.send("RFID Attendance Server running ✅");
 });
 
+/* ===== MAIN LOG ROUTE ===== */
 app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
   if (!cardNo) {
-    console.log("❌ ERROR: No card number received");
+    console.log("❌ No card number received");
     return res.send("OK");
   }
 
-  console.log("\n==============================");
-  console.log("📡 CARD SCANNED:", cardNo);
+  console.log("\n📡 CARD SCANNED:", cardNo);
 
   const identity = identifyCard(cardNo);
   console.log("🪪 CARD TYPE:", identity.type);
 
   if (identity.type === "UNKNOWN") {
-    console.log("❌ REJECTED: Card not found in database");
+    console.log("❌ REJECTED: Unknown card");
     return res.send("OK");
   }
 
-  const { day, time } = getCurrentDayTime();
+  const { day, time, date } = getCurrentDayTime();
   const activeSlots = getActiveSlots(day, time);
-
-  console.log("📅 DAY:", day, "| ⏰ TIME:", time);
-  console.log("📚 ACTIVE SLOTS:", activeSlots.length);
-
   let validSlot = null;
 
   /* ===== STUDENT ===== */
@@ -167,15 +173,11 @@ app.get("/log", (req, res) => {
     );
 
     if (!validSlot) {
-      console.log("❌ STUDENT REJECTED: No valid lecture/practical");
+      console.log("❌ STUDENT REJECTED: No active slot");
       return res.send("OK");
     }
 
-    console.log("🎓 STUDENT ACCEPTED");
-    console.log("Name :", identity.data.student_name);
-    console.log("Class:", identity.data.class);
-    console.log("Batch:", identity.data.batch);
-    console.log("Subject:", validSlot.subject);
+    console.log("🎓 STUDENT ACCEPTED:", identity.data.student_name);
   }
 
   /* ===== STAFF ===== */
@@ -187,7 +189,7 @@ app.get("/log", (req, res) => {
     );
 
     if (!validSlot) {
-      console.log("❌ STAFF REJECTED: No timetable slot allotted");
+      console.log("❌ STAFF REJECTED: No active slot");
       return res.send("OK");
     }
 
@@ -199,19 +201,13 @@ app.get("/log", (req, res) => {
     );
 
     if (!teaches) {
-      console.log("❌ STAFF REJECTED: Not assigned to teach this subject");
+      console.log("❌ STAFF REJECTED: Not assigned");
       return res.send("OK");
     }
 
-    console.log("👨‍🏫 STAFF ACCEPTED");
-    console.log("Name :", identity.data.staff_name);
-    console.log("Staff ID:", identity.data.staff_id);
-    console.log("Class:", validSlot.class);
-    console.log("Batch:", validSlot.batch);
-    console.log("Subject:", validSlot.subject);
+    console.log("👨‍🏫 STAFF ACCEPTED:", identity.data.staff_name);
   }
 
-  /* ===== DOUBLE SCAN ===== */
   const sessionKey = generateSessionKey(validSlot);
 
   db.get(
@@ -219,7 +215,7 @@ app.get("/log", (req, res) => {
     [normalize(cardNo), sessionKey],
     (err, row) => {
       if (row) {
-        console.log("⛔ REJECTED: Duplicate scan in same session");
+        console.log("⛔ DUPLICATE SCAN BLOCKED");
         return res.send("OK");
       }
 
@@ -238,11 +234,54 @@ app.get("/log", (req, res) => {
         `${normalize(cardNo)},${new Date().toISOString()}\n`
       );
 
-      console.log("✅ ATTENDANCE LOGGED SUCCESSFULLY");
+      /* ===== DAILY REPORT ===== */
+      const reportFile = path.join(
+        reportsDir,
+        `attendance_${date}.csv`
+      );
+
+      if (!fs.existsSync(reportFile)) {
+        fs.writeFileSync(
+          reportFile,
+          "Date,Time,Card No,Role,Class,Batch,Subject\n"
+        );
+      }
+
+      fs.appendFileSync(
+        reportFile,
+        `${date},${time},${normalize(cardNo)},${identity.type},${validSlot.class},${validSlot.batch},${validSlot.subject}\n`
+      );
+
+      console.log("✅ ATTENDANCE LOGGED");
       res.send("OK");
     }
   );
 });
+
+/* ===== DOWNLOAD FULL LOG ===== */
+app.get("/download", (req, res) => {
+  res.download(csvPath, "attendance.csv");
+});
+
+/* ===== DOWNLOAD TODAY REPORT ===== */
+app.get("/report/today", (req, res) => {
+  const today = new Date();
+  today.setHours(today.getHours() + 5);
+  today.setMinutes(today.getMinutes() + 30);
+
+  const date = today.toISOString().slice(0, 10);
+  const reportFile = path.join(reportsDir, `attendance_${date}.csv`);
+
+  if (!fs.existsSync(reportFile)) {
+    return res.send("No report generated yet");
+  }
+
+  res.download(reportFile);
+});
+
+/* =========================
+   START SERVER
+========================= */
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
