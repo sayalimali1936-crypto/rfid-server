@@ -26,7 +26,7 @@ db.run(`
   )
 `);
 
-/* CSV HEADER (DETAILED) */
+/* CSV HEADER */
 if (!fs.existsSync(csvPath)) {
   fs.writeFileSync(
     csvPath,
@@ -96,7 +96,7 @@ function getIndianDayTime() {
   };
 }
 
-/* FIXED SLOT MATCH */
+/* SLOT MATCH */
 function getActiveSlots(day, time) {
   return timetable.filter(slot => {
     const start = slot.start_time.slice(0, 5);
@@ -158,13 +158,6 @@ app.get("/log", (req, res) => {
     );
 
     if (!slotUsed) return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
-
-    console.log("✅ STUDENT ACCEPTED");
-    console.log("Name :", identity.data.student_name);
-    console.log("Class:", identity.data.class);
-    console.log("Batch:", identity.data.batch);
-    console.log("Type :", slotUsed.session_type);
-    console.log("Subj :", slotUsed.subject);
   }
 
   /* STAFF */
@@ -174,35 +167,51 @@ app.get("/log", (req, res) => {
     );
 
     if (!slotUsed) return res.send("REJECTED_STAFF_NOT_SCHEDULED");
-
-    console.log("✅ STAFF ACCEPTED");
-    console.log("Name :", identity.data.staff_name);
-    console.log("Class:", slotUsed.class);
-    console.log("Batch:", slotUsed.batch);
-    console.log("Type :", slotUsed.session_type);
-    console.log("Subj :", slotUsed.subject);
   }
 
-  /* STORE */
-  const csvLine = [
-    date,
-    time,
-    identity.type,
-    identity.type === "STUDENT" ? identity.data.student_name : identity.data.staff_name,
-    normalize(cardNo),
-    slotUsed.class,
-    slotUsed.batch,
-    slotUsed.session_type,
-    slotUsed.subject
-  ].join(",") + "\n";
+  /* ===== PROXY PREVENTION (10 MIN) ===== */
+  db.get(
+    `
+    SELECT timestamp FROM attendance
+    WHERE card_no = ?
+    ORDER BY timestamp DESC
+    LIMIT 1
+    `,
+    [normalize(cardNo)],
+    (err, row) => {
+      if (row) {
+        const lastScan = new Date(row.timestamp);
+        const now = new Date();
+        const diffSeconds = (now - lastScan) / 1000;
 
-  db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
-  fs.appendFile(csvPath, csvLine, () => {});
+        if (diffSeconds < 600) {
+          console.log("🚫 PROXY BLOCKED: Duplicate scan within 10 minutes");
+          return res.send("REJECTED_DUPLICATE_SCAN");
+        }
+      }
 
-  console.log("📌 ATTENDANCE LOGGED");
-  console.log("────────────────────────────");
+      /* STORE */
+      const csvLine = [
+        date,
+        time,
+        identity.type,
+        identity.type === "STUDENT" ? identity.data.student_name : identity.data.staff_name,
+        normalize(cardNo),
+        slotUsed.class,
+        slotUsed.batch,
+        slotUsed.session_type,
+        slotUsed.subject
+      ].join(",") + "\n";
 
-  res.send("SCAN_ACCEPTED");
+      db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
+      fs.appendFile(csvPath, csvLine, () => {});
+
+      console.log("📌 ATTENDANCE LOGGED");
+      console.log("────────────────────────────");
+
+      res.send("SCAN_ACCEPTED");
+    }
+  );
 });
 
 app.get("/download", (req, res) => {
