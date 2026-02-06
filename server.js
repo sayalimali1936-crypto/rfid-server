@@ -113,6 +113,7 @@ app.get("/log", (req, res) => {
       normalize(s.class) === normalize(identity.data.class) &&
       (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
+
     if (!slotUsed) {
       console.log("❌ REJECTED: Student not eligible");
       return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
@@ -123,6 +124,7 @@ app.get("/log", (req, res) => {
     slotUsed = activeSlots.find(s =>
       normalize(s.staff_id) === normalize(identity.data.staff_id)
     );
+
     if (!slotUsed) {
       console.log("❌ REJECTED: Staff not scheduled");
       return res.send("REJECTED_STAFF_NOT_SCHEDULED");
@@ -145,7 +147,9 @@ app.get("/log", (req, res) => {
         date,
         time,
         identity.type,
-        identity.type === "STUDENT" ? identity.data.student_name : identity.data.staff_name,
+        identity.type === "STUDENT"
+          ? identity.data.student_name
+          : identity.data.staff_name,
         normalize(cardNo),
         slotUsed.class,
         slotUsed.batch,
@@ -156,7 +160,11 @@ app.get("/log", (req, res) => {
       db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
       fs.appendFile(csvPath, csvLine, () => {});
 
-      console.log("✅ ACCEPTED & LOGGED:", identity.data.student_name || identity.data.staff_name);
+      console.log("✅ ACCEPTED & LOGGED");
+      console.log("Name  :", identity.type === "STUDENT" ? identity.data.student_name : identity.data.staff_name);
+      console.log("Class :", slotUsed.class);
+      console.log("Batch :", slotUsed.batch);
+
       res.send("SCAN_ACCEPTED");
     }
   );
