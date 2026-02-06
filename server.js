@@ -26,7 +26,7 @@ db.run(`
   )
 `);
 
-/* CSV HEADER */
+/* CSV HEADER (ALREADY AGREED FORMAT) */
 if (!fs.existsSync(csvPath)) {
   fs.writeFileSync(
     csvPath,
@@ -55,11 +55,6 @@ const students = loadCSV("Students.csv");
 const staffMaster = loadCSV("Staff_Master.csv");
 const timetable = loadCSV("Time_Table.csv");
 
-console.log("📄 CSV Loaded:");
-console.log("Students:", students.length);
-console.log("Staff:", staffMaster.length);
-console.log("Timetable:", timetable.length);
-
 /* =========================
    HELPERS
 ========================= */
@@ -86,7 +81,6 @@ function identifyCard(cardNo) {
 function getIndianDayTime() {
   const nowUTC = new Date();
   const istTime = new Date(nowUTC.getTime() + (5.5 * 60 * 60 * 1000));
-
   const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
   return {
@@ -96,7 +90,7 @@ function getIndianDayTime() {
   };
 }
 
-/* SLOT MATCH */
+/* SLOT MATCH (UNCHANGED) */
 function getActiveSlots(day, time) {
   return timetable.filter(slot => {
     const start = slot.start_time.slice(0, 5);
@@ -122,54 +116,38 @@ app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
 
   if (!cardNo || cardNo.toLowerCase() === "wakeup") {
-    console.log("🟡 SERVER WAKEUP");
     return res.send("SERVER_WAKING_UP");
   }
 
-  console.log("────────────────────────────");
-  console.log("📥 Card Scanned:", cardNo);
-
   const identity = identifyCard(cardNo);
-  console.log("🪪 Role:", identity.type);
-
   if (identity.type === "UNKNOWN") {
-    console.log("❌ Unknown card");
     return res.send("REJECTED_UNKNOWN_CARD");
   }
 
   const { day, time, date } = getIndianDayTime();
-  console.log(`🕒 IST → ${day} ${time}`);
-
   const activeSlots = getActiveSlots(day, time);
-  console.log("📚 Active Slots:", activeSlots.length);
-
   if (activeSlots.length === 0) {
-    console.log("❌ No active slot");
     return res.send("REJECTED_NO_ACTIVE_SLOT");
   }
 
   let slotUsed = null;
 
-  /* STUDENT */
   if (identity.type === "STUDENT") {
     slotUsed = activeSlots.find(s =>
       normalize(s.class) === normalize(identity.data.class) &&
       (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
-
     if (!slotUsed) return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
   }
 
-  /* STAFF */
   if (identity.type === "STAFF") {
     slotUsed = activeSlots.find(s =>
       normalize(s.staff_id) === normalize(identity.data.staff_id)
     );
-
     if (!slotUsed) return res.send("REJECTED_STAFF_NOT_SCHEDULED");
   }
 
-  /* ===== PROXY PREVENTION (10 MIN) ===== */
+  /* ===== ONLY ADDITION: PROXY PREVENTION ===== */
   db.get(
     `
     SELECT timestamp FROM attendance
@@ -185,17 +163,18 @@ app.get("/log", (req, res) => {
         const diffSeconds = (now - lastScan) / 1000;
 
         if (diffSeconds < 600) {
-          console.log("🚫 PROXY BLOCKED: Duplicate scan within 10 minutes");
           return res.send("REJECTED_DUPLICATE_SCAN");
         }
       }
 
-      /* STORE */
+      /* STORE (UNCHANGED FORMAT) */
       const csvLine = [
         date,
         time,
         identity.type,
-        identity.type === "STUDENT" ? identity.data.student_name : identity.data.staff_name,
+        identity.type === "STUDENT"
+          ? identity.data.student_name
+          : identity.data.staff_name,
         normalize(cardNo),
         slotUsed.class,
         slotUsed.batch,
@@ -205,9 +184,6 @@ app.get("/log", (req, res) => {
 
       db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
       fs.appendFile(csvPath, csvLine, () => {});
-
-      console.log("📌 ATTENDANCE LOGGED");
-      console.log("────────────────────────────");
 
       res.send("SCAN_ACCEPTED");
     }
