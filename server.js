@@ -89,7 +89,7 @@ function getIndianDayTime() {
 
   return {
     day: days[istTime.getDay()],
-    time: istTime.toTimeString().slice(0, 5) // HH:MM ONLY
+    time: istTime.toTimeString().slice(0, 5) // HH:MM
   };
 }
 
@@ -106,36 +106,41 @@ function getActiveSlots(day, time) {
 ========================= */
 
 app.get("/", (req, res) => {
+  console.log("ℹ️ Root endpoint hit – server is awake");
   res.send("RFID Attendance Server running (IST) ✅");
 });
 
 app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
 
-  /* Render wakeup */
+  /* ===== SERVER SLEEP / WAKEUP VISIBILITY ===== */
   if (!cardNo || cardNo.toLowerCase() === "wakeup") {
-    console.log("🟡 SERVER WAKEUP CALL");
+    console.log("🟡 SERVER WAKEUP EVENT");
+    console.log("ℹ️ No scan processed. Server is now ready.");
+    console.log("👉 Please scan card again.");
     return res.send("SERVER_WAKING_UP");
   }
 
-  console.log("📥 Scan Received:", cardNo);
+  console.log("────────────────────────────");
+  console.log("📥 Scan request received");
+  console.log("Card No:", cardNo);
 
   const identity = identifyCard(cardNo);
   console.log("🪪 Card Type:", identity.type);
 
   if (identity.type === "UNKNOWN") {
-    console.log("❌ UNKNOWN CARD");
+    console.log("❌ RESULT: Unknown card – not in database");
     return res.send("REJECTED_UNKNOWN_CARD");
   }
 
   const { day, time } = getIndianDayTime();
-  const activeSlots = getActiveSlots(day, time);
+  console.log(`🕒 IST Time Used → ${day} ${time}`);
 
-  console.log(`📅 ${day} ⏰ ${time}`);
-  console.log("📚 Active Slots:", activeSlots.length);
+  const activeSlots = getActiveSlots(day, time);
+  console.log("📚 Active timetable slots:", activeSlots.length);
 
   if (activeSlots.length === 0) {
-    console.log("❌ No active timetable slot");
+    console.log("❌ RESULT: No active slot at this time");
     return res.send("REJECTED_NO_ACTIVE_SLOT");
   }
 
@@ -147,11 +152,14 @@ app.get("/log", (req, res) => {
     );
 
     if (!valid) {
-      console.log("❌ Student not eligible");
+      console.log("❌ RESULT: Student not eligible for this slot");
       return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
     }
 
-    console.log(`✅ STUDENT ACCEPTED: ${identity.data.student_name}`);
+    console.log("✅ RESULT: Student accepted");
+    console.log("Name :", identity.data.student_name);
+    console.log("Class:", identity.data.class);
+    console.log("Batch:", identity.data.batch);
   }
 
   /* STAFF */
@@ -161,23 +169,28 @@ app.get("/log", (req, res) => {
     );
 
     if (!valid) {
-      console.log("❌ Staff not scheduled");
+      console.log("❌ RESULT: Staff not scheduled for this slot");
       return res.send("REJECTED_STAFF_NOT_SCHEDULED");
     }
 
-    console.log(`✅ STAFF ACCEPTED: ${identity.data.staff_name}`);
+    console.log("✅ RESULT: Staff accepted");
+    console.log("Name :", identity.data.staff_name);
+    console.log("Staff ID:", identity.data.staff_id);
   }
 
   /* STORE */
   db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
   fs.appendFile(csvPath, `${normalize(cardNo)},${new Date().toISOString()}\n`, () => {});
 
-  console.log("📌 ATTENDANCE LOGGED");
+  console.log("📌 ATTENDANCE LOGGED SUCCESSFULLY");
+  console.log("────────────────────────────");
+
   res.send("SCAN_ACCEPTED");
 });
 
 /* DOWNLOAD */
 app.get("/download", (req, res) => {
+  console.log("⬇️ Attendance CSV downloaded");
   res.download(csvPath, "attendance.csv");
 });
 
