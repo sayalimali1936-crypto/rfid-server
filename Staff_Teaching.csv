@@ -24,9 +24,9 @@ staff_id,subject,class,batch
 9954,Numerical Methods & computer programming,SE,SE-2
 9954,Numerical Methods & computer programming,SE,SE-3
 9954,Numerical Methods & computer programming,SE,ALL
-9922,Electrical Workshop 2,SE,SE-1
-9922,Electrical Workshop 2,SE,SE-2
-9922,Electrical Workshop 2,SE,SE-3
+9914,Electrical Workshop 2,SE,SE-1
+9914,Electrical Workshop 2,SE,SE-2
+9914,Electrical Workshop 2,SE,SE-3
 9866,Computer Aided Design of Electrical Machines,TE,TE-1
 9866,Computer Aided Design of Electrical Machines,TE,TE-2
 9866,Computer Aided Design of Electrical Machines,TE,TE-3
@@ -39,7 +39,7 @@ staff_id,subject,class,batch
 350,Power System II,TE,TE-2
 350,Power System II,TE,TE-3
 350,Power System II,TE,ALL
-9922,Energy Management,TE,ALL
+9914,Energy Management,TE,ALL
 9921,Switchgear and Protection,BE,BE-1
 9921,Switchgear and Protection,BE,BE-2
 9921,Switchgear and Protection,BE,BE-3
