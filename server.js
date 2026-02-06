@@ -80,12 +80,18 @@ function identifyCard(cardNo) {
   return { type: "UNKNOWN", data: null };
 }
 
-function getCurrentDayTime() {
-  const now = new Date();
+/* 🔑 IST TIME FIX */
+function getIndianDayTime() {
+  const nowUTC = new Date();
+
+  // IST = UTC + 5 hours 30 minutes
+  const istTime = new Date(nowUTC.getTime() + (5.5 * 60 * 60 * 1000));
+
   const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
   return {
-    day: days[now.getDay()],
-    time: now.toTimeString().slice(0, 8)
+    day: days[istTime.getDay()],
+    time: istTime.toTimeString().slice(0, 8)
   };
 }
 
@@ -102,17 +108,13 @@ function getActiveSlots(day, time) {
 ========================= */
 
 app.get("/", (req, res) => {
-  res.send("RFID Attendance Server running ✅");
+  res.send("RFID Attendance Server running (IST) ✅");
 });
-
-/* =========================
-   MAIN RFID LOG ROUTE
-========================= */
 
 app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
 
-  /* 🔴 RENDER WAKEUP HANDLER */
+  /* Render wakeup */
   if (!cardNo || cardNo.toLowerCase() === "wakeup") {
     console.log("🟡 SERVER WAKEUP CALL");
     return res.send("SERVER_WAKING_UP");
@@ -124,11 +126,11 @@ app.get("/log", (req, res) => {
   console.log("🪪 Card Type:", identity.type);
 
   if (identity.type === "UNKNOWN") {
-    console.log("❌ UNKNOWN CARD:", cardNo);
+    console.log("❌ UNKNOWN CARD");
     return res.send("REJECTED_UNKNOWN_CARD");
   }
 
-  const { day, time } = getCurrentDayTime();
+  const { day, time } = getIndianDayTime();
   const activeSlots = getActiveSlots(day, time);
 
   console.log(`📅 ${day} ⏰ ${time}`);
@@ -147,7 +149,7 @@ app.get("/log", (req, res) => {
     );
 
     if (!valid) {
-      console.log("❌ Student not eligible for this session");
+      console.log("❌ Student not eligible");
       return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
     }
 
@@ -161,41 +163,26 @@ app.get("/log", (req, res) => {
     );
 
     if (!valid) {
-      console.log("❌ Staff not scheduled now");
+      console.log("❌ Staff not scheduled");
       return res.send("REJECTED_STAFF_NOT_SCHEDULED");
     }
 
     console.log(`✅ STAFF ACCEPTED: ${identity.data.staff_name}`);
   }
 
-  /* STORE ATTENDANCE */
-  db.run(
-    `INSERT INTO attendance (card_no) VALUES (?)`,
-    [normalize(cardNo)]
-  );
+  /* STORE */
+  db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
+  fs.appendFile(csvPath, `${normalize(cardNo)},${new Date().toISOString()}\n`, () => {});
 
-  fs.appendFile(
-    csvPath,
-    `${normalize(cardNo)},${new Date().toISOString()}\n`,
-    () => {}
-  );
-
-  console.log("📌 ATTENDANCE LOGGED:", cardNo);
-  return res.send("SCAN_ACCEPTED");
+  console.log("📌 ATTENDANCE LOGGED");
+  res.send("SCAN_ACCEPTED");
 });
 
-/* =========================
-   DOWNLOAD CSV
-========================= */
-
+/* DOWNLOAD */
 app.get("/download", (req, res) => {
   res.download(csvPath, "attendance.csv");
 });
 
-/* =========================
-   START SERVER
-========================= */
-
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT} (IST enabled)`);
 });
