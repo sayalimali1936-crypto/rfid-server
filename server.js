@@ -80,18 +80,16 @@ function identifyCard(cardNo) {
   return { type: "UNKNOWN", data: null };
 }
 
-/* 🔑 IST TIME FIX */
+/* ===== IST + HH:MM FIX ===== */
 function getIndianDayTime() {
   const nowUTC = new Date();
-
-  // IST = UTC + 5 hours 30 minutes
   const istTime = new Date(nowUTC.getTime() + (5.5 * 60 * 60 * 1000));
 
   const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
   return {
     day: days[istTime.getDay()],
-    time: istTime.toTimeString().slice(0, 8)
+    time: istTime.toTimeString().slice(0, 5) // HH:MM ONLY
   };
 }
 
