@@ -26,8 +26,12 @@ db.run(`
   )
 `);
 
+/* CSV HEADER (DETAILED) */
 if (!fs.existsSync(csvPath)) {
-  fs.writeFileSync(csvPath, "Card Number,Timestamp\n");
+  fs.writeFileSync(
+    csvPath,
+    "Date,Time,Role,Name,Card_No,Class,Batch,Session_Type,Subject\n"
+  );
 }
 
 /* =========================
@@ -78,7 +82,7 @@ function identifyCard(cardNo) {
   return { type: "UNKNOWN", data: null };
 }
 
-/* ===== IST TIME (CORRECT) ===== */
+/* IST TIME */
 function getIndianDayTime() {
   const nowUTC = new Date();
   const istTime = new Date(nowUTC.getTime() + (5.5 * 60 * 60 * 1000));
@@ -87,15 +91,16 @@ function getIndianDayTime() {
 
   return {
     day: days[istTime.getDay()],
-    time: istTime.toTimeString().slice(0, 5) // HH:MM
+    time: istTime.toTimeString().slice(0, 5),
+    date: istTime.toISOString().slice(0, 10)
   };
 }
 
-/* ===== ✅ FINAL FIX HERE ===== */
+/* FIXED SLOT MATCH */
 function getActiveSlots(day, time) {
   return timetable.filter(slot => {
-    const start = slot.start_time.slice(0, 5); // HH:MM:SS → HH:MM
-    const end   = slot.end_time.slice(0, 5);
+    const start = slot.start_time.slice(0, 5);
+    const end = slot.end_time.slice(0, 5);
 
     return (
       normalize(slot.day) === normalize(day) &&
@@ -121,17 +126,18 @@ app.get("/log", (req, res) => {
     return res.send("SERVER_WAKING_UP");
   }
 
-  console.log("📥 Scan:", cardNo);
+  console.log("────────────────────────────");
+  console.log("📥 Card Scanned:", cardNo);
 
   const identity = identifyCard(cardNo);
-  console.log("🪪 Type:", identity.type);
+  console.log("🪪 Role:", identity.type);
 
   if (identity.type === "UNKNOWN") {
     console.log("❌ Unknown card");
     return res.send("REJECTED_UNKNOWN_CARD");
   }
 
-  const { day, time } = getIndianDayTime();
+  const { day, time, date } = getIndianDayTime();
   console.log(`🕒 IST → ${day} ${time}`);
 
   const activeSlots = getActiveSlots(day, time);
@@ -142,29 +148,60 @@ app.get("/log", (req, res) => {
     return res.send("REJECTED_NO_ACTIVE_SLOT");
   }
 
+  let slotUsed = null;
+
+  /* STUDENT */
   if (identity.type === "STUDENT") {
-    const valid = activeSlots.find(s =>
+    slotUsed = activeSlots.find(s =>
       normalize(s.class) === normalize(identity.data.class) &&
       (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
 
-    if (!valid) return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
-    console.log("✅ Student:", identity.data.student_name);
+    if (!slotUsed) return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
+
+    console.log("✅ STUDENT ACCEPTED");
+    console.log("Name :", identity.data.student_name);
+    console.log("Class:", identity.data.class);
+    console.log("Batch:", identity.data.batch);
+    console.log("Type :", slotUsed.session_type);
+    console.log("Subj :", slotUsed.subject);
   }
 
+  /* STAFF */
   if (identity.type === "STAFF") {
-    const valid = activeSlots.find(s =>
+    slotUsed = activeSlots.find(s =>
       normalize(s.staff_id) === normalize(identity.data.staff_id)
     );
 
-    if (!valid) return res.send("REJECTED_STAFF_NOT_SCHEDULED");
-    console.log("✅ Staff:", identity.data.staff_name);
+    if (!slotUsed) return res.send("REJECTED_STAFF_NOT_SCHEDULED");
+
+    console.log("✅ STAFF ACCEPTED");
+    console.log("Name :", identity.data.staff_name);
+    console.log("Class:", slotUsed.class);
+    console.log("Batch:", slotUsed.batch);
+    console.log("Type :", slotUsed.session_type);
+    console.log("Subj :", slotUsed.subject);
   }
 
+  /* STORE */
+  const csvLine = [
+    date,
+    time,
+    identity.type,
+    identity.type === "STUDENT" ? identity.data.student_name : identity.data.staff_name,
+    normalize(cardNo),
+    slotUsed.class,
+    slotUsed.batch,
+    slotUsed.session_type,
+    slotUsed.subject
+  ].join(",") + "\n";
+
   db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
-  fs.appendFile(csvPath, `${normalize(cardNo)},${new Date().toISOString()}\n`, () => {});
+  fs.appendFile(csvPath, csvLine, () => {});
 
   console.log("📌 ATTENDANCE LOGGED");
+  console.log("────────────────────────────");
+
   res.send("SCAN_ACCEPTED");
 });
 
