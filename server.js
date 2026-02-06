@@ -163,7 +163,7 @@ app.get("/log", (req, res) => {
       console.log("✅ ACCEPTED & LOGGED");
       console.log("Name  :", identity.type === "STUDENT" ? identity.data.student_name : identity.data.staff_name);
       console.log("Class :", slotUsed.class);
-      console.log("Batch :", slotUsed.batch);
+      console.log("Batch :", slotUsed.students);
 
       res.send("SCAN_ACCEPTED");
     }
