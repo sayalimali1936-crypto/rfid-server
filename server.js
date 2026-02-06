@@ -42,9 +42,7 @@ function loadCSV(file) {
   return lines.map(line => {
     const values = line.split(",");
     let obj = {};
-    headers.forEach((h, i) => {
-      obj[h.trim()] = values[i]?.trim();
-    });
+    headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());
     return obj;
   });
 }
@@ -80,7 +78,7 @@ function identifyCard(cardNo) {
   return { type: "UNKNOWN", data: null };
 }
 
-/* ===== IST + HH:MM FIX ===== */
+/* ===== IST TIME (CORRECT) ===== */
 function getIndianDayTime() {
   const nowUTC = new Date();
   const istTime = new Date(nowUTC.getTime() + (5.5 * 60 * 60 * 1000));
@@ -93,12 +91,18 @@ function getIndianDayTime() {
   };
 }
 
+/* ===== ✅ FINAL FIX HERE ===== */
 function getActiveSlots(day, time) {
-  return timetable.filter(slot =>
-    normalize(slot.day) === normalize(day) &&
-    slot.start_time <= time &&
-    slot.end_time >= time
-  );
+  return timetable.filter(slot => {
+    const start = slot.start_time.slice(0, 5); // HH:MM:SS → HH:MM
+    const end   = slot.end_time.slice(0, 5);
+
+    return (
+      normalize(slot.day) === normalize(day) &&
+      start <= time &&
+      end >= time
+    );
+  });
 }
 
 /* =========================
@@ -106,94 +110,68 @@ function getActiveSlots(day, time) {
 ========================= */
 
 app.get("/", (req, res) => {
-  console.log("ℹ️ Root endpoint hit – server is awake");
   res.send("RFID Attendance Server running (IST) ✅");
 });
 
 app.get("/log", (req, res) => {
   const cardNo = req.query.card_no;
 
-  /* ===== SERVER SLEEP / WAKEUP VISIBILITY ===== */
   if (!cardNo || cardNo.toLowerCase() === "wakeup") {
-    console.log("🟡 SERVER WAKEUP EVENT");
-    console.log("ℹ️ No scan processed. Server is now ready.");
-    console.log("👉 Please scan card again.");
+    console.log("🟡 SERVER WAKEUP");
     return res.send("SERVER_WAKING_UP");
   }
 
-  console.log("────────────────────────────");
-  console.log("📥 Scan request received");
-  console.log("Card No:", cardNo);
+  console.log("📥 Scan:", cardNo);
 
   const identity = identifyCard(cardNo);
-  console.log("🪪 Card Type:", identity.type);
+  console.log("🪪 Type:", identity.type);
 
   if (identity.type === "UNKNOWN") {
-    console.log("❌ RESULT: Unknown card – not in database");
+    console.log("❌ Unknown card");
     return res.send("REJECTED_UNKNOWN_CARD");
   }
 
   const { day, time } = getIndianDayTime();
-  console.log(`🕒 IST Time Used → ${day} ${time}`);
+  console.log(`🕒 IST → ${day} ${time}`);
 
   const activeSlots = getActiveSlots(day, time);
-  console.log("📚 Active timetable slots:", activeSlots.length);
+  console.log("📚 Active Slots:", activeSlots.length);
 
   if (activeSlots.length === 0) {
-    console.log("❌ RESULT: No active slot at this time");
+    console.log("❌ No active slot");
     return res.send("REJECTED_NO_ACTIVE_SLOT");
   }
 
-  /* STUDENT */
   if (identity.type === "STUDENT") {
     const valid = activeSlots.find(s =>
       normalize(s.class) === normalize(identity.data.class) &&
       (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
 
-    if (!valid) {
-      console.log("❌ RESULT: Student not eligible for this slot");
-      return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
-    }
-
-    console.log("✅ RESULT: Student accepted");
-    console.log("Name :", identity.data.student_name);
-    console.log("Class:", identity.data.class);
-    console.log("Batch:", identity.data.batch);
+    if (!valid) return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
+    console.log("✅ Student:", identity.data.student_name);
   }
 
-  /* STAFF */
   if (identity.type === "STAFF") {
     const valid = activeSlots.find(s =>
       normalize(s.staff_id) === normalize(identity.data.staff_id)
     );
 
-    if (!valid) {
-      console.log("❌ RESULT: Staff not scheduled for this slot");
-      return res.send("REJECTED_STAFF_NOT_SCHEDULED");
-    }
-
-    console.log("✅ RESULT: Staff accepted");
-    console.log("Name :", identity.data.staff_name);
-    console.log("Staff ID:", identity.data.staff_id);
+    if (!valid) return res.send("REJECTED_STAFF_NOT_SCHEDULED");
+    console.log("✅ Staff:", identity.data.staff_name);
   }
 
-  /* STORE */
   db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
   fs.appendFile(csvPath, `${normalize(cardNo)},${new Date().toISOString()}\n`, () => {});
 
-  console.log("📌 ATTENDANCE LOGGED SUCCESSFULLY");
-  console.log("────────────────────────────");
-
+  console.log("📌 ATTENDANCE LOGGED");
   res.send("SCAN_ACCEPTED");
 });
 
-/* DOWNLOAD */
 app.get("/download", (req, res) => {
-  console.log("⬇️ Attendance CSV downloaded");
   res.download(csvPath, "attendance.csv");
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT} (IST enabled)`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
