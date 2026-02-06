@@ -81,8 +81,7 @@ function getIndianDayTime() {
     day: days[ist.getDay()],
     time: ist.toTimeString().slice(0, 5),
     date: ist.toISOString().slice(0, 10),
-    hour: ist.getHours(),
-    minute: ist.getMinutes()
+    hour: ist.getHours()
   };
 }
 
@@ -100,16 +99,15 @@ function getActiveSlots(day, time) {
 
 function generateTodayReportIfNeeded() {
   const { date, hour } = getIndianDayTime();
-
   if (hour < 16) return;
 
   const reportFile = `attendance_${date}.csv`;
   const reportPath = path.join(__dirname, reportFile);
 
-  if (fs.existsSync(reportPath)) return;
-
-  fs.copyFileSync(csvPath, reportPath);
-  console.log(`📁 DAILY REPORT GENERATED: ${reportFile}`);
+  if (!fs.existsSync(reportPath)) {
+    fs.copyFileSync(csvPath, reportPath);
+    console.log(`📁 DAILY REPORT GENERATED: ${reportFile}`);
+  }
 }
 
 /* =========================
@@ -155,23 +153,17 @@ app.get("/log", (req, res) => {
       normalize(s.class) === normalize(identity.data.class) &&
       (normalize(s.batch) === normalize(identity.data.batch) || normalize(s.batch) === "ALL")
     );
-    if (!slotUsed) {
-      console.log("❌ REJECTED: Student not eligible");
-      return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
-    }
+    if (!slotUsed) return res.send("REJECTED_STUDENT_NOT_ELIGIBLE");
   }
 
   if (identity.type === "STAFF") {
     slotUsed = activeSlots.find(s =>
       normalize(s.staff_id) === normalize(identity.data.staff_id)
     );
-    if (!slotUsed) {
-      console.log("❌ REJECTED: Staff not scheduled");
-      return res.send("REJECTED_STAFF_NOT_SCHEDULED");
-    }
+    if (!slotUsed) return res.send("REJECTED_STAFF_NOT_SCHEDULED");
   }
 
-  /* PROXY PREVENTION (10 MIN) */
+  /* PROXY PREVENTION (10 min) */
   db.get(
     `SELECT timestamp FROM attendance WHERE card_no=? ORDER BY timestamp DESC LIMIT 1`,
     [normalize(cardNo)],
@@ -179,19 +171,26 @@ app.get("/log", (req, res) => {
       if (row) {
         const diff = (new Date() - new Date(row.timestamp)) / 1000;
         if (diff < 600) {
-          console.log("🚫 REJECTED: Duplicate scan");
+          console.log("🚫 DUPLICATE SCAN BLOCKED");
           return res.send("REJECTED_DUPLICATE_SCAN");
         }
       }
+
+      const batchToLog =
+        identity.type === "STUDENT"
+          ? identity.data.batch
+          : slotUsed.batch;
 
       const csvLine = [
         date,
         time,
         identity.type,
-        identity.type === "STUDENT" ? identity.data.student_name : identity.data.staff_name,
+        identity.type === "STUDENT"
+          ? identity.data.student_name
+          : identity.data.staff_name,
         normalize(cardNo),
         slotUsed.class,
-        slotUsed.batch,
+        batchToLog,
         slotUsed.session_type,
         slotUsed.subject
       ].join(",") + "\n";
@@ -199,17 +198,12 @@ app.get("/log", (req, res) => {
       db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
       fs.appendFile(csvPath, csvLine, () => {});
 
-      console.log("✅ ACCEPTED & LOGGED");
-      console.log("Name :", identity.type === "STUDENT" ? identity.data.student_name : identity.data.staff_name);
-      console.log("Class:", slotUsed.class);
-      console.log("Batch:", slotUsed.batch);
-
+      console.log("✅ LOGGED:", batchToLog);
       res.send("SCAN_ACCEPTED");
     }
   );
 });
 
-/* DOWNLOAD TODAY REPORT */
 app.get("/download/today", (req, res) => {
   const { date } = getIndianDayTime();
   const file = `attendance_${date}.csv`;
