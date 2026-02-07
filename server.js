@@ -128,23 +128,15 @@ app.get("/log", (req, res) => {
     return res.send("SERVER_WAKING_UP");
   }
 
-  console.log("📥 CARD SCANNED:", cardNo);
-
   const identity = identifyCard(cardNo);
-  console.log("🪪 TYPE:", identity.type);
 
   if (identity.type === "UNKNOWN") {
-    console.log("❌ REJECTED: Unknown card");
     return res.send("REJECTED_UNKNOWN_CARD");
   }
 
   const { day, time, date } = getIndianDayTime();
   const activeSlots = getActiveSlots(day, time);
-
-  if (activeSlots.length === 0) {
-    console.log("❌ REJECTED: No active slot");
-    return res.send("REJECTED_NO_ACTIVE_SLOT");
-  }
+  if (activeSlots.length === 0) return res.send("REJECTED_NO_ACTIVE_SLOT");
 
   let slotUsed;
 
@@ -163,17 +155,13 @@ app.get("/log", (req, res) => {
     if (!slotUsed) return res.send("REJECTED_STAFF_NOT_SCHEDULED");
   }
 
-  /* PROXY PREVENTION (10 min) */
   db.get(
     `SELECT timestamp FROM attendance WHERE card_no=? ORDER BY timestamp DESC LIMIT 1`,
     [normalize(cardNo)],
     (err, row) => {
       if (row) {
         const diff = (new Date() - new Date(row.timestamp)) / 1000;
-        if (diff < 600) {
-          console.log("🚫 DUPLICATE SCAN BLOCKED");
-          return res.send("REJECTED_DUPLICATE_SCAN");
-        }
+        if (diff < 600) return res.send("REJECTED_DUPLICATE_SCAN");
       }
 
       const batchToLog =
@@ -198,12 +186,17 @@ app.get("/log", (req, res) => {
       db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
       fs.appendFile(csvPath, csvLine, () => {});
 
-      console.log("✅ LOGGED:", batchToLog);
       res.send("SCAN_ACCEPTED");
     }
   );
 });
 
+/* ✅ NEW ROUTE — FIXES YOUR ERROR */
+app.get("/download", (req, res) => {
+  res.download(csvPath, "attendance.csv");
+});
+
+/* Existing daily download */
 app.get("/download/today", (req, res) => {
   const { date } = getIndianDayTime();
   const file = `attendance_${date}.csv`;
