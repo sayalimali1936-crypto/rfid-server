@@ -14,7 +14,8 @@ const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 
 const db = new sqlite3.Database(dbPath, err => {
-  if (err) console.error(err.message);
+  if (err) console.error("❌ DB ERROR:", err.message);
+  else console.log("✅ Database connected");
 });
 
 db.run(`
@@ -30,6 +31,7 @@ if (!fs.existsSync(csvPath)) {
     csvPath,
     "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n"
   );
+  console.log("📄 attendance.csv created");
 }
 
 /* =========================
@@ -52,6 +54,12 @@ function loadCSV(file) {
 const students = loadCSV("Students.csv");
 const staffMaster = loadCSV("Staff_Master.csv");
 const timetable = loadCSV("Time_Table.csv");
+
+console.log("📚 CSV Loaded:", {
+  students: students.length,
+  staff: staffMaster.length,
+  timetable: timetable.length
+});
 
 /* =========================
    HELPERS
@@ -123,7 +131,6 @@ function getActiveSlot(day, time, identity) {
 
 function generateDailyReportIfNeeded() {
   const { date, hour } = getIndianTime();
-
   if (hour < 16) return;
 
   const reportFile = `attendance_${date}.csv`;
@@ -147,15 +154,45 @@ app.get("/log", (req, res) => {
   generateDailyReportIfNeeded();
 
   const cardNo = req.query.card_no;
-  if (!cardNo) return res.send("NO_CARD");
+  console.log("\n🔔 SCAN REQUEST RECEIVED");
+  console.log("🆔 Card No:", cardNo);
+
+  if (!cardNo) {
+    console.log("❌ REJECTED: No card number");
+    return res.send("NO_CARD");
+  }
 
   const identity = identifyCard(cardNo);
-  if (identity.type === "UNKNOWN") return res.send("UNKNOWN_CARD");
+
+  if (identity.type === "UNKNOWN") {
+    console.log("❌ REJECTED: Unknown card");
+    return res.send("UNKNOWN_CARD");
+  }
+
+  console.log("👤 Type:", identity.type);
+  console.log("📛 Name:",
+    identity.type === "STUDENT"
+      ? identity.data.student_name
+      : identity.data.staff_name
+  );
 
   const { date, time, day } = getIndianTime();
+  console.log("🕒 Time:", day, time);
+
   const slot = getActiveSlot(day, time, identity);
 
-  if (!slot) return res.send("NO_SLOT");
+  if (!slot) {
+    console.log("❌ REJECTED: No active timetable slot");
+    return res.send("NO_SLOT");
+  }
+
+  console.log("📘 Subject:", slot.subject);
+  console.log("🏫 Class:", slot.class);
+  console.log("👥 Batch:",
+    identity.type === "STUDENT"
+      ? identity.data.batch
+      : slot.batch
+  );
 
   db.get(
     `SELECT timestamp FROM attendance WHERE card_no=? ORDER BY timestamp DESC LIMIT 1`,
@@ -163,7 +200,10 @@ app.get("/log", (req, res) => {
     (err, row) => {
       if (row) {
         const diff = (new Date() - new Date(row.timestamp)) / 1000;
-        if (diff < 600) return res.send("DUPLICATE");
+        if (diff < 600) {
+          console.log("🚫 REJECTED: Duplicate scan (proxy prevention)");
+          return res.send("DUPLICATE");
+        }
       }
 
       db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
@@ -177,34 +217,36 @@ app.get("/log", (req, res) => {
           : identity.data.staff_name,
         normalize(cardNo),
         slot.class,
-        identity.type === "STUDENT" ? identity.data.batch : slot.batch,
+        identity.type === "STUDENT"
+          ? identity.data.batch
+          : slot.batch,
         slot.subject
       ].join(",") + "\n";
 
       fs.appendFile(csvPath, csvLine, () => {});
+
+      console.log("✅ ATTENDANCE LOGGED SUCCESSFULLY");
       res.send("OK");
     }
   );
 });
 
-/* DOWNLOAD FULL HISTORY */
 app.get("/download", (req, res) => {
   res.download(csvPath, "attendance.csv");
 });
 
-/* DOWNLOAD TODAY REPORT */
 app.get("/download/today", (req, res) => {
   const { date } = getIndianTime();
   const file = `attendance_${date}.csv`;
   const filePath = path.join(__dirname, file);
 
   if (!fs.existsSync(filePath)) {
-    return res.send("Daily report not generated yet (after 4 PM IST)");
+    return res.send("Daily report not generated yet");
   }
 
   res.download(filePath);
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
