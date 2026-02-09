@@ -69,6 +69,12 @@ function normalize(v) {
   return v?.toString().trim().toUpperCase();
 }
 
+/* 🔑 TIME FIX — CORE FIX */
+function timeToMinutes(t) {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
 function identifyCard(cardNo) {
   const student = students.find(
     s => normalize(s.card_no) === normalize(cardNo)
@@ -90,22 +96,23 @@ function getIndianTime() {
 
   return {
     date: ist.toISOString().slice(0, 10),
-    time: ist.toTimeString().slice(0, 5),
+    time: ist.toTimeString().slice(0, 5), // HH:MM
     day: days[ist.getDay()],
     hour: ist.getHours()
   };
 }
 
+/* ✅ FIXED ACTIVE SLOT LOGIC */
 function getActiveSlot(day, time, identity) {
-  return timetable.find(slot => {
-    const start = slot.start_time.slice(0, 5);
-    const end = slot.end_time.slice(0, 5);
+  const nowMin = timeToMinutes(time);
 
-    if (
-      normalize(slot.day) !== normalize(day) ||
-      start > time ||
-      end < time
-    ) return false;
+  return timetable.find(slot => {
+    if (normalize(slot.day) !== normalize(day)) return false;
+
+    const startMin = timeToMinutes(slot.start_time.slice(0,5));
+    const endMin = timeToMinutes(slot.end_time.slice(0,5));
+
+    if (nowMin < startMin || nowMin > endMin) return false;
 
     if (identity.type === "STUDENT") {
       return (
@@ -194,6 +201,7 @@ app.get("/log", (req, res) => {
       : slot.batch
   );
 
+  /* PROXY PREVENTION (10 min) */
   db.get(
     `SELECT timestamp FROM attendance WHERE card_no=? ORDER BY timestamp DESC LIMIT 1`,
     [normalize(cardNo)],
@@ -201,7 +209,7 @@ app.get("/log", (req, res) => {
       if (row) {
         const diff = (new Date() - new Date(row.timestamp)) / 1000;
         if (diff < 600) {
-          console.log("🚫 REJECTED: Duplicate scan (proxy prevention)");
+          console.log("🚫 REJECTED: Duplicate scan");
           return res.send("DUPLICATE");
         }
       }
