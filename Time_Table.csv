@@ -23,6 +23,7 @@ Wednesday,10:45:00,11:45:00,Lecture,SE,ALL,Electrical Machine-I,9780
 Wednesday,11:45:00,12:45:00,Lecture,SE,ALL,OE-Project Management,10016
 Wednesday,13:30:00,14:30:00,Lecture,SE,ALL,Environmental Awareness for Electrical Engineering,9954
 Wednesday,14:30:00,15:30:00,Lecture,SE,ALL,Fundamentals of data science & machine learning,9921
+Wednesday,15:30:00,17:00:00,Lecture,SE,ALL,Test Subject,9865
 Thursday,8:30:00,10:30:00,Practical,SE,SE-1,Numerical Methods & computer programming,9954
 Thursday,8:30:00,10:30:00,Practical,SE,SE-2,Electrical Machine-I,9780
 Thursday,8:30:00,10:30:00,Practical,SE,SE-3,Marathi,9865
@@ -30,6 +31,7 @@ Thursday,10:45:00,11:45:00,Lecture,SE,ALL,Network Analysis,9235
 Thursday,11:45:00,12:45:00,Lecture,SE,ALL,Electrical Machine-I,9780
 Thursday,13:30:00,14:30:00,Lecture,SE,ALL,Numerical Methods & computer programming,9954
 Thursday,14:30:00,15:30:00,Lecture,SE,ALL,Electrical Machine-I,9780
+Thursday,15:30:00,17:00:00,Lecture,SE,ALL,Test Subject,9865
 Friday,8:30:00,10:30:00,Practical,SE,SE-1,Electrical Machine-I,9780
 Friday,8:30:00,10:30:00,Practical,SE,SE-2,Marathi,9865
 Friday,8:30:00,10:30:00,Practical,SE,SE-3,Workshop Shop 1,9921
@@ -37,6 +39,7 @@ Friday,10:45:00,11:45:00,Lecture,SE,ALL,Numerical Methods & computer programming
 Friday,11:45:00,12:45:00,Lecture,SE,ALL,Fundamentals of data science & machine learning,9921
 Friday,13:30:00,14:30:00,Lecture,SE,ALL,OE-Project Management,10016
 Friday,14:30:00,15:30:00,Lecture,SE,ALL,Electrical Machine-I,9780
+Friday,15:30:00,17:00:00,Lecture,SE,ALL,Test Subject,9865
 Saturday,8:30:00,10:30:00,Lecture,SE,ALL,Environmental Awareness for Electrical Engineering,9954
 Saturday,10:45:00,11:45:00,Lecture,SE,ALL,Industrial Organization & Management [T],9780
 Saturday,11:45:00,12:45:00,Lecture,SE,ALL,Marathi[T],9865
@@ -49,6 +52,7 @@ Monday,11:45:00,12:45:00,Lecture,TE,ALL,Control System Engineering,2093
 Monday,13:30:00,15:30:00,Practical,TE,TE-1,Computer Aided Design of Electrical Machines-1,9866
 Monday,13:30:00,15:30:00,Practical,TE,TE-2,Computer Aided Design of Electrical Machines-2,9866
 Monday,13:30:00,15:30:00,Practical,TE,TE-3,Control System Engineering,2093
+Monday,15:30:00,17:00:00,Lecture,TE,ALL,Test Subject,9865
 Tuesday,8:30:00,9:30:00,Lecture,TE,ALL,Computer Aided Design of Electrical Machines,9866
 Tuesday,9:30:00,10:30:00,Lecture,TE,ALL,Control System Engineering,2093
 Tuesday,10:45:00,11:45:00,Lecture,TE,ALL,Power System-2,350
@@ -56,6 +60,7 @@ Tuesday,11:45:00,12:45:00,Lecture,TE,ALL,Energy Management,9914
 Tuesday,13:30:00,15:30:00,Practical,TE,TE-1,Computer Aided Design of Electrical Machines-2,9866
 Tuesday,13:30:00,15:30:00,Practical,TE,TE-2,Control System Engineering,2093
 Tuesday,13:30:00,15:30:00,Practical,TE,TE-3,Power System-2,350
+Tuesday,15:30:00,17:00:00,Lecture,TE,ALL,Test Subject,9865
 Wednesday,8:30:00,9:30:00,Lecture,TE,ALL,Power System-2,350
 Wednesday,9:30:00,10:30:00,Lecture,TE,ALL,Computer Aided Design of Electrical Machines,9866
 Wednesday,10:45:00,11:45:00,Lecture,TE,ALL,Control System Engineering,2093
@@ -63,6 +68,7 @@ Wednesday,11:45:00,12:45:00,Lecture,TE,ALL,Power System-2,350
 Wednesday,13:30:00,15:30:00,Practical,TE,TE-1,Control System Engineering,2093
 Wednesday,13:30:00,15:30:00,Practical,TE,TE-2,Power System-2,350
 Wednesday,13:30:00,15:30:00,Practical,TE,TE-3,Computer Aided Design of Electrical Machines-1,9866
+Wednesday,15:30:00,17:00:00,Lecture,TE,ALL,Test Subject,9865
 Thursday,8:30:00,9:30:00,Lecture,TE,ALL,Control System Engineering,2093
 Thursday,9:30:00,10:30:00,Lecture,TE,ALL,Energy Management,9914
 Thursday,10:45:00,11:45:00,Lecture,TE,ALL,Control System Engineering,2093
@@ -70,10 +76,12 @@ Thursday,11:45:00,12:45:00,Lecture,TE,ALL,Computer Aided Design of Electrical Ma
 Thursday,13:30:00,15:30:00,Practical,TE,TE-1,Power System-2,350
 Thursday,13:30:00,15:30:00,Practical,TE,TE-2,Computer Aided Design of Electrical Machines-1,9866
 Thursday,13:30:00,15:30:00,Practical,TE,TE-3,Computer Aided Design of Electrical Machines-2,9866
+Thursday,15:30:00,17:00:00,Lecture,TE,ALL,Test Subject,9865
 Friday,8:30:00,9:30:00,Lecture,TE,ALL,Energy Management,9914
 Friday,9:30:00,10:30:00,Lecture,TE,ALL,Power System-2,350
 Friday,10:45:00,12:45:00,Lecture,TE,ALL,TPO Activity,9235
 Friday,13:30:00,15:30:00,Practical,TE,ALL,EESA Activity,9921
+Friday,15:30:00,17:00:00,Lecture,TE,ALL,Test Subject,9865
 Monday,8:30:00,9:30:00,Lecture,BE,ALL,Advanced Electricel Drives & Central,9954
 Monday,9:30:00,10:30:00,Lecture,BE,ALL,Advanced Electricel Drives & Central,9954
 Monday,10:45:00,12:45:00,Practical,BE,BE-1,Advanced Electricel Drives & Central,9954
@@ -81,6 +89,7 @@ Monday,10:45:00,12:45:00,Practical,BE,BE-2,Switchgear and Protection,9921
 Monday,10:45:00,12:45:00,Practical,BE,BE-3,,
 Monday,13:30:00,14:30:00,Lecture,BE,ALL,Smart Grid,9865
 Monday,14:30:00,15:30:00,Lecture,BE,ALL,Smart Grid,9865
+Monday,15:30:00,17:00:00,Lecture,BE,ALL,Test Subject,9865
 Tuesday,8:30:00,9:30:00,Lecture,BE,ALL,Switchgear and Protection,9921
 Tuesday,9:30:00,10:30:00,Lecture,BE,ALL,Switchgear and Protection,9921
 Tuesday,10:45:00,12:45:00,Practical,BE,BE-1,Switchgear and Protection,9921
@@ -88,16 +97,20 @@ Tuesday,10:45:00,12:45:00,Practical,BE,BE-2,Advanced Electricel Drives & Central
 Tuesday,10:45:00,12:45:00,Practical,BE,BE-3,,
 Tuesday,13:30:00,14:30:00,Lecture,BE,ALL,Smart Grid,9865
 Tuesday,14:30:00,15:30:00,Lecture,BE,ALL,Advanced Electricel Drives & Central,9954
+Tuesday,15:30:00,17:00:00,Lecture,BE,ALL,Test Subject,9865
 Wednesday,8:30:00,9:30:00,Lecture,BE,ALL,Illumination Engineering,9235
 Wednesday,9:30:00,10:30:00,Lecture,BE,ALL,Illumination Engineering,9235
 Wednesday,10:45:00,11:45:00,Lecture,BE,ALL,Switchgear and Protection,9921
 Wednesday,11:45:00,12:45:00,Lecture,BE,ALL,Smart Grid,9865
 Wednesday,13:30:00,15:30:00,Lecture,BE,ALL,TPO Activity,9235
+Wednesday,15:30:00,17:00:00,Lecture,BE,ALL,Test Subject,9865
 Thursday,8:30:00,9:30:00,Lecture,BE,ALL,Switchgear and Protection,9921
 Thursday,9:30:00,10:30:00,Lecture,BE,ALL,Illumination Engineering,9235
 Thursday,10:45:00,11:45:00,Lecture,BE,ALL,Advanced Electricel Drives & Central,9954
 Thursday,11:45:00,12:45:00,Lecture,BE,ALL,Switchgear and Protection,9921
 Thursday,13:30:00,15:30:00,Lecture,BE,ALL,TPO Activity,9235
+Thursday,15:30:00,17:00:00,Lecture,BE,ALL,Test Subject,9865
 Friday,8:30:00,10:30:00,Lecture,BE,ALL,Project,9780
 Friday,10:45:00,12:45:00,Lecture,BE,ALL,Project,9780
 Friday,13:30:00,15:30:00,Lecture,BE,ALL,Project,9780
+Friday,15:30:00,17:00:00,Lecture,BE,ALL,Test Subject,9865
