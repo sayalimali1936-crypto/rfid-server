@@ -152,6 +152,12 @@ function generateDailyReportIfNeeded() {
 /* =========================
    ROUTES
 ========================= */
+// Direct public CSV access (for Power BI)
+app.get("/attendance.csv", (req, res) => {
+  const filePath = path.join(__dirname, "attendance.csv");
+  res.sendFile(filePath);
+});
+
 
 app.get("/", (req, res) => {
   res.send("RFID Attendance Server Running");
