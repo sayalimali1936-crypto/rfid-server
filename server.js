@@ -259,221 +259,236 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 /* =========================
-   FINAL DASHBOARD API
+   LOGIN SYSTEM
+========================= */
+app.get("/login", (req, res) => {
+res.send(`
+<html>
+<head>
+<style>
+body { font-family:Arial; background:#0f172a; color:white; text-align:center; padding-top:100px; }
+input { padding:10px; margin:10px; }
+button { padding:10px; }
+</style>
+</head>
+<body>
+
+<h1>🔐 Login</h1>
+
+<select id="role">
+  <option value="teacher">Teacher</option>
+  <option value="hod">HOD</option>
+</select><br>
+
+<input id="pass" type="password" placeholder="Password"><br>
+<button onclick="login()">Login</button>
+
+<script>
+function login(){
+  const role = document.getElementById("role").value;
+  const pass = document.getElementById("pass").value;
+
+  if(pass==="1234"){
+    window.location = "/dashboard?role="+role;
+  } else {
+    alert("Wrong password");
+  }
+}
+</script>
+
+</body>
+</html>
+`);
+});
+
+
+/* =========================
+   API (ADVANCED ANALYTICS)
 ========================= */
 app.get("/api/dashboard", (req, res) => {
   const data = fs.readFileSync(csvPath, "utf8");
   const lines = data.trim().split("\n").slice(1);
 
-  let records = lines.map(line => {
-    const [date,time,role,name,card,className,batch,subject] = line.split(",");
+  let records = lines.map(l => {
+    const [date,time,role,name,card,className,batch,subject] = l.split(",");
     return { date,time,role,name,card,className,batch,subject };
   });
 
   // Only students
-  records = records.filter(r => r.role === "STUDENT");
+  records = records.filter(r => r.role==="STUDENT");
 
-  let totalLectures = [...new Set(records.map(r => r.date + r.subject))].length;
+  let subjectWise={}, classWise={}, studentWise={};
 
-  let studentData = {};
-  let subjectWise = {};
-  let classWise = {};
-
-  records.forEach(r => {
-    // student
-    if (!studentData[r.name]) {
-      studentData[r.name] = { count: 0 };
-    }
-    studentData[r.name].count++;
-
-    // subject
-    subjectWise[r.subject] = (subjectWise[r.subject] || 0) + 1;
-
-    // class
-    classWise[r.className] = (classWise[r.className] || 0) + 1;
+  records.forEach(r=>{
+    subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
+    classWise[r.className]=(classWise[r.className]||0)+1;
+    studentWise[r.name]=(studentWise[r.name]||0)+1;
   });
 
-  // % + defaulter
-  Object.keys(studentData).forEach(s => {
-    studentData[s].percent =
-      ((studentData[s].count / totalLectures) * 100).toFixed(1);
+  let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
 
-    studentData[s].defaulter = studentData[s].percent < 75;
+  let defaulters=[];
+  Object.keys(studentWise).forEach(s=>{
+    let percent=(studentWise[s]/totalLectures)*100;
+    if(percent<75) defaulters.push(s);
   });
 
   res.json({
     totalLectures,
-    studentData,
     subjectWise,
-    classWise
+    classWise,
+    studentWise,
+    defaulters,
+    records
   });
 });
 
 
 /* =========================
-   FINAL PROFESSIONAL UI
+   REJECTED SCANS PAGE
+========================= */
+app.get("/rejected", (req,res)=>{
+res.send("<h1>🚫 Rejected Scans (Extend logic if needed)</h1>");
+});
+
+
+/* =========================
+   FINAL DASHBOARD UI
 ========================= */
 app.get("/dashboard", (req, res) => {
 res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-<title>Smart Attendance Dashboard</title>
+<title>Smart Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { margin:0; font-family:Segoe UI; background:#f1f5f9; }
+body { margin:0; font-family:Segoe UI; display:flex; }
 
-.nav {
-  background:#0f172a;
-  padding:12px;
-  text-align:center;
-}
-.nav button {
-  background:#3b82f6;
+.sidebar {
+  width:220px;
+  background:linear-gradient(#1e293b,#0f172a);
   color:white;
-  padding:10px 15px;
-  margin:5px;
+  height:100vh;
+  padding:15px;
+}
+
+.sidebar h2 { text-align:center; }
+.sidebar button {
+  width:100%;
+  padding:10px;
+  margin:5px 0;
+  background:#3b82f6;
   border:none;
-  border-radius:5px;
-  cursor:pointer;
+  color:white;
 }
 
-.container { padding:20px; }
+.main { flex:1; padding:20px; background:#f1f5f9; }
 
-.cards {
-  display:flex;
-  gap:15px;
-}
+.cards { display:flex; gap:15px; }
 .card {
   flex:1;
-  background:white;
+  background:rgba(255,255,255,0.7);
+  backdrop-filter:blur(10px);
   padding:20px;
   border-radius:12px;
-  text-align:center;
-  box-shadow:0 3px 6px rgba(0,0,0,0.1);
-  transition:0.3s;
 }
-.card:hover { transform:scale(1.05); }
 
-.section {
-  margin-top:20px;
-  background:white;
-  padding:20px;
-  border-radius:12px;
-  box-shadow:0 3px 6px rgba(0,0,0,0.1);
-}
+.section { margin-top:20px; background:white; padding:20px; border-radius:12px; }
 
 table { width:100%; border-collapse:collapse; }
 th,td { padding:10px; border-bottom:1px solid #ddd; }
 
-.def { color:red; font-weight:bold; }
-.ok { color:green; }
-
+.def { color:red; }
 </style>
 </head>
 
 <body>
 
-<div class="nav">
-  <button onclick="setView('subject')">Subject Teacher</button>
-  <button onclick="setView('class')">Class Teacher</button>
-  <button onclick="setView('hod')">HOD</button>
+<div class="sidebar">
+<h2>📊 Dashboard</h2>
+<button onclick="view='subject';load()">Subject</button>
+<button onclick="view='class';load()">Class</button>
+<button onclick="view='hod';load()">HOD</button>
+<button onclick="window.location='/rejected'">Rejected</button>
+<button onclick="exportData()">Export</button>
 </div>
 
-<div class="container">
+<div class="main">
 
 <div class="cards">
-  <div class="card">
-    <h3>Total Lectures</h3>
-    <h2 id="lec"></h2>
-  </div>
-  <div class="card">
-    <h3>Total Students</h3>
-    <h2 id="stu"></h2>
-  </div>
+  <div class="card">Lectures: <span id="lec"></span></div>
+  <div class="card">Students: <span id="stu"></span></div>
+  <div class="card">Defaulters: <span id="def"></span></div>
 </div>
 
 <div class="section">
-  <canvas id="chart"></canvas>
+  <canvas id="bar"></canvas>
 </div>
 
 <div class="section">
-  <h3>Student Report</h3>
-  <table>
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Attendance %</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody id="table"></tbody>
-  </table>
+  <canvas id="pie"></canvas>
+</div>
+
+<div class="section">
+<table>
+<thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
+<tbody id="table"></tbody>
+</table>
 </div>
 
 </div>
 
 <script>
 let view="subject";
-let chart;
-
-function setView(v){
-  view = v;
-  load();
-}
+let barChart, pieChart;
 
 async function load(){
-  const res = await fetch("/api/dashboard");
-  const data = await res.json();
+  const res=await fetch("/api/dashboard");
+  const data=await res.json();
 
-  document.getElementById("lec").innerText = data.totalLectures;
-  document.getElementById("stu").innerText =
-    Object.keys(data.studentData).length;
+  document.getElementById("lec").innerText=data.totalLectures;
+  document.getElementById("stu").innerText=Object.keys(data.studentWise).length;
+  document.getElementById("def").innerText=data.defaulters.length;
 
-  const tbody = document.getElementById("table");
-  tbody.innerHTML="";
-
-  Object.entries(data.studentData).forEach(([name,val])=>{
-    tbody.innerHTML += \`
-      <tr>
-        <td>\${name}</td>
-        <td>\${val.percent}%</td>
-        <td class="\${val.defaulter?'def':'ok'}">
-          \${val.defaulter ? 'Defaulter' : 'OK'}
-        </td>
-      </tr>
-    \`;
-  });
-
-  let labels, values;
+  let labels,values;
 
   if(view==="subject"){
-    labels = Object.keys(data.subjectWise);
-    values = Object.values(data.subjectWise);
+    labels=Object.keys(data.subjectWise);
+    values=Object.values(data.subjectWise);
   }
   else if(view==="class"){
-    labels = Object.keys(data.studentData);
-    values = Object.values(data.studentData).map(x=>x.count);
+    labels=Object.keys(data.studentWise);
+    values=Object.values(data.studentWise);
   }
   else{
-    labels = Object.keys(data.classWise);
-    values = Object.values(data.classWise);
+    labels=Object.keys(data.classWise);
+    values=Object.values(data.classWise);
   }
 
-  if(chart) chart.destroy();
+  if(barChart) barChart.destroy();
+  barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
 
-  chart = new Chart(document.getElementById("chart"), {
-    type:"bar",
-    data:{
-      labels:labels,
-      datasets:[{
-        label:"Attendance",
-        data:values,
-        backgroundColor:"#3b82f6"
-      }]
-    }
+  if(pieChart) pieChart.destroy();
+  pieChart=new Chart(pie,{type:"pie",data:{labels:labels,datasets:[{data:values}]}});
+
+  const tbody=document.getElementById("table");
+  tbody.innerHTML="";
+  Object.entries(data.studentWise).forEach(([n,c])=>{
+    let percent=((c/data.totalLectures)*100).toFixed(1);
+    let def=percent<75;
+    tbody.innerHTML+=\`
+      <tr>
+        <td>\${n}</td>
+        <td>\${percent}%</td>
+        <td class="\${def?'def':''}">\${def?'Defaulter':'OK'}</td>
+      </tr>\`;
   });
+}
+
+function exportData(){
+  window.location="/attendance.csv";
 }
 
 load();
