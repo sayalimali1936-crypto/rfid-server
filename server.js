@@ -259,9 +259,8 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 /* =========================
-   DASHBOARD API
+   FINAL DASHBOARD API
 ========================= */
-
 app.get("/api/dashboard", (req, res) => {
   const data = fs.readFileSync(csvPath, "utf8");
   const lines = data.trim().split("\n").slice(1);
@@ -271,53 +270,49 @@ app.get("/api/dashboard", (req, res) => {
     return { date,time,role,name,card,className,batch,subject };
   });
 
-  // ✅ ONLY STUDENTS
+  // Only students
   records = records.filter(r => r.role === "STUDENT");
 
-  const today = new Date().toISOString().slice(0,10);
+  let totalLectures = [...new Set(records.map(r => r.date + r.subject))].length;
 
-  const todayRecords = records.filter(r => r.date === today);
-
-  // SUBJECT
+  let studentData = {};
   let subjectWise = {};
-  let lectureCount = {};
-
-  records.forEach(r => {
-    subjectWise[r.subject] = (subjectWise[r.subject] || 0) + 1;
-    lectureCount[r.subject] = (lectureCount[r.subject] || 0) + 1;
-  });
-
-  // STUDENT
-  let studentWise = {};
-  records.forEach(r => {
-    studentWise[r.name] = (studentWise[r.name] || 0) + 1;
-  });
-
-  // CLASS
   let classWise = {};
+
   records.forEach(r => {
+    // student
+    if (!studentData[r.name]) {
+      studentData[r.name] = { count: 0 };
+    }
+    studentData[r.name].count++;
+
+    // subject
+    subjectWise[r.subject] = (subjectWise[r.subject] || 0) + 1;
+
+    // class
     classWise[r.className] = (classWise[r.className] || 0) + 1;
   });
 
-  // DEFAULTERS (<3 logic demo)
-  let defaulters = Object.entries(studentWise)
-    .filter(([n,c]) => c < 3)
-    .map(([n]) => n);
+  // % + defaulter
+  Object.keys(studentData).forEach(s => {
+    studentData[s].percent =
+      ((studentData[s].count / totalLectures) * 100).toFixed(1);
+
+    studentData[s].defaulter = studentData[s].percent < 75;
+  });
 
   res.json({
-    total: records.length,
-    today: todayRecords.length,
+    totalLectures,
+    studentData,
     subjectWise,
-    studentWise,
-    classWise,
-    defaulters,
-    records
+    classWise
   });
 });
-/* =========================
-   WEB DASHBOARD
-========================= */
 
+
+/* =========================
+   FINAL PROFESSIONAL UI
+========================= */
 app.get("/dashboard", (req, res) => {
 res.send(`
 <!DOCTYPE html>
@@ -327,46 +322,53 @@ res.send(`
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { font-family: Arial; background:#eef2f7; margin:0; }
+body { margin:0; font-family:Segoe UI; background:#f1f5f9; }
 
 .nav {
-  background:#1e293b;
-  padding:10px;
+  background:#0f172a;
+  padding:12px;
   text-align:center;
 }
 .nav button {
-  margin:5px;
-  padding:10px;
-  color:white;
   background:#3b82f6;
+  color:white;
+  padding:10px 15px;
+  margin:5px;
   border:none;
   border-radius:5px;
+  cursor:pointer;
 }
 
 .container { padding:20px; }
 
 .cards {
   display:flex;
-  gap:10px;
-  flex-wrap:wrap;
+  gap:15px;
 }
 .card {
   flex:1;
   background:white;
-  padding:15px;
-  border-radius:10px;
+  padding:20px;
+  border-radius:12px;
   text-align:center;
+  box-shadow:0 3px 6px rgba(0,0,0,0.1);
+  transition:0.3s;
 }
+.card:hover { transform:scale(1.05); }
 
 .section {
   margin-top:20px;
   background:white;
-  padding:15px;
-  border-radius:10px;
+  padding:20px;
+  border-radius:12px;
+  box-shadow:0 3px 6px rgba(0,0,0,0.1);
 }
 
 table { width:100%; border-collapse:collapse; }
-th,td { padding:8px; border-bottom:1px solid #ddd; }
+th,td { padding:10px; border-bottom:1px solid #ddd; }
+
+.def { color:red; font-weight:bold; }
+.ok { color:green; }
 
 </style>
 </head>
@@ -374,17 +376,22 @@ th,td { padding:8px; border-bottom:1px solid #ddd; }
 <body>
 
 <div class="nav">
-  <button onclick="view='subject';load()">Subject Teacher</button>
-  <button onclick="view='class';load()">Class Teacher</button>
-  <button onclick="view='hod';load()">HOD</button>
+  <button onclick="setView('subject')">Subject Teacher</button>
+  <button onclick="setView('class')">Class Teacher</button>
+  <button onclick="setView('hod')">HOD</button>
 </div>
 
 <div class="container">
 
 <div class="cards">
-  <div class="card">Total: <span id="total"></span></div>
-  <div class="card">Today: <span id="today"></span></div>
-  <div class="card">Defaulters: <span id="def"></span></div>
+  <div class="card">
+    <h3>Total Lectures</h3>
+    <h2 id="lec"></h2>
+  </div>
+  <div class="card">
+    <h3>Total Students</h3>
+    <h2 id="stu"></h2>
+  </div>
 </div>
 
 <div class="section">
@@ -395,7 +402,11 @@ th,td { padding:8px; border-bottom:1px solid #ddd; }
   <h3>Student Report</h3>
   <table>
     <thead>
-      <tr><th>Name</th><th>Attendance</th></tr>
+      <tr>
+        <th>Name</th>
+        <th>Attendance %</th>
+        <th>Status</th>
+      </tr>
     </thead>
     <tbody id="table"></tbody>
   </table>
@@ -407,19 +418,32 @@ th,td { padding:8px; border-bottom:1px solid #ddd; }
 let view="subject";
 let chart;
 
+function setView(v){
+  view = v;
+  load();
+}
+
 async function load(){
   const res = await fetch("/api/dashboard");
   const data = await res.json();
 
-  document.getElementById("total").innerText = data.total;
-  document.getElementById("today").innerText = data.today;
-  document.getElementById("def").innerText = data.defaulters.length;
+  document.getElementById("lec").innerText = data.totalLectures;
+  document.getElementById("stu").innerText =
+    Object.keys(data.studentData).length;
 
-  // TABLE
   const tbody = document.getElementById("table");
   tbody.innerHTML="";
-  Object.entries(data.studentWise).forEach(([n,c])=>{
-    tbody.innerHTML += "<tr><td>"+n+"</td><td>"+c+"</td></tr>";
+
+  Object.entries(data.studentData).forEach(([name,val])=>{
+    tbody.innerHTML += \`
+      <tr>
+        <td>\${name}</td>
+        <td>\${val.percent}%</td>
+        <td class="\${val.defaulter?'def':'ok'}">
+          \${val.defaulter ? 'Defaulter' : 'OK'}
+        </td>
+      </tr>
+    \`;
   });
 
   let labels, values;
@@ -429,8 +453,8 @@ async function load(){
     values = Object.values(data.subjectWise);
   }
   else if(view==="class"){
-    labels = Object.keys(data.studentWise);
-    values = Object.values(data.studentWise);
+    labels = Object.keys(data.studentData);
+    values = Object.values(data.studentData).map(x=>x.count);
   }
   else{
     labels = Object.keys(data.classWise);
