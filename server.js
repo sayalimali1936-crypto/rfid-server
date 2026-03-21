@@ -266,33 +266,26 @@ res.send(`
 <html>
 <head>
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; padding-top:100px; }
-input { padding:10px; margin:10px; }
-button { padding:10px; }
+body{font-family:sans-serif;background:#0f172a;color:white;text-align:center;padding-top:100px}
+input,select{padding:10px;margin:10px}
+button{padding:10px;background:#3b82f6;color:white;border:none}
 </style>
 </head>
 <body>
 
-<h1>🔐 Login</h1>
-
+<h2>Login</h2>
 <select id="role">
-  <option value="teacher">Teacher</option>
-  <option value="hod">HOD</option>
+<option value="teacher">Teacher</option>
+<option value="hod">HOD</option>
 </select><br>
-
-<input id="pass" type="password" placeholder="Password"><br>
-<button onclick="login()">Login</button>
+<input id="pass" type="password"><br>
+<button onclick="go()">Login</button>
 
 <script>
-function login(){
-  const role = document.getElementById("role").value;
-  const pass = document.getElementById("pass").value;
-
-  if(pass==="1234"){
-    window.location = "/dashboard?role="+role;
-  } else {
-    alert("Wrong password");
-  }
+function go(){
+ if(document.getElementById("pass").value=="1234")
+ location="/dashboard";
+ else alert("Wrong password");
 }
 </script>
 
@@ -303,137 +296,169 @@ function login(){
 
 
 /* =========================
-   API (ADVANCED ANALYTICS)
+   ADVANCED DASHBOARD API
 ========================= */
 app.get("/api/dashboard", (req, res) => {
-  const data = fs.readFileSync(csvPath, "utf8");
-  const lines = data.trim().split("\n").slice(1);
 
-  let records = lines.map(l => {
+  const data = fs.readFileSync(csvPath, "utf8");
+  const lines = data.trim().split("\\n").slice(1);
+
+  let records = lines.map(l=>{
     const [date,time,role,name,card,className,batch,subject] = l.split(",");
-    return { date,time,role,name,card,className,batch,subject };
+    return {date,time,role,name,className,batch,subject};
   });
 
-  // Only students
-  records = records.filter(r => r.role==="STUDENT");
+  // only students
+  records = records.filter(r=>r.role==="STUDENT");
 
-  let subjectWise={}, classWise={}, studentWise={};
+  const { classFilter, batchFilter, period } = req.query;
+
+  if(classFilter) records = records.filter(r=>r.className===classFilter);
+  if(batchFilter) records = records.filter(r=>r.batch===batchFilter);
+
+  // time filter
+  let now = new Date();
+  if(period==="week"){
+    let d=new Date(); d.setDate(now.getDate()-7);
+    records = records.filter(r=> new Date(r.date)>=d);
+  }
+  if(period==="month"){
+    let d=new Date(); d.setMonth(now.getMonth()-1);
+    records = records.filter(r=> new Date(r.date)>=d);
+  }
+
+  let student={},subject={},classWise={};
 
   records.forEach(r=>{
-    subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
+    student[r.name]=(student[r.name]||0)+1;
+    subject[r.subject]=(subject[r.subject]||0)+1;
     classWise[r.className]=(classWise[r.className]||0)+1;
-    studentWise[r.name]=(studentWise[r.name]||0)+1;
   });
 
-  let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+  let totalLectures = [...new Set(records.map(r=>r.date+r.subject))].length;
 
-  let defaulters=[];
-  Object.keys(studentWise).forEach(s=>{
-    let percent=(studentWise[s]/totalLectures)*100;
-    if(percent<75) defaulters.push(s);
+  let studentData={};
+  Object.keys(student).forEach(n=>{
+    let p=(student[n]/totalLectures)*100;
+    studentData[n]={
+      count:student[n],
+      percent:p.toFixed(1),
+      def:p<75
+    };
   });
 
   res.json({
     totalLectures,
-    subjectWise,
-    classWise,
-    studentWise,
-    defaulters,
-    records
+    studentData,
+    subject,
+    classWise
   });
 });
 
 
 /* =========================
-   REJECTED SCANS PAGE
+   REJECTED PAGE
 ========================= */
-app.get("/rejected", (req,res)=>{
-res.send("<h1>🚫 Rejected Scans (Extend logic if needed)</h1>");
+app.get("/rejected",(req,res)=>{
+res.send("<h1 style='text-align:center'>🚫 Rejected Scans</h1>");
 });
 
 
 /* =========================
-   FINAL DASHBOARD UI
+   POWER BI STYLE DASHBOARD
 ========================= */
-app.get("/dashboard", (req, res) => {
+app.get("/dashboard",(req,res)=>{
 res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-<title>Smart Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { margin:0; font-family:Segoe UI; display:flex; }
+body{margin:0;display:flex;font-family:Segoe UI;background:#020617;color:white}
+.sidebar{width:240px;background:#1e293b;padding:20px}
+.sidebar h2{text-align:center}
+.sidebar button{width:100%;margin:5px;padding:10px;background:#3b82f6;border:none;color:white;border-radius:6px}
 
-.sidebar {
-  width:220px;
-  background:linear-gradient(#1e293b,#0f172a);
-  color:white;
-  height:100vh;
-  padding:15px;
+.main{flex:1;padding:20px}
+
+.cards{display:flex;gap:15px}
+.card{
+ flex:1;
+ background:rgba(255,255,255,0.05);
+ backdrop-filter:blur(10px);
+ padding:20px;
+ border-radius:12px;
+ text-align:center
 }
 
-.sidebar h2 { text-align:center; }
-.sidebar button {
-  width:100%;
-  padding:10px;
-  margin:5px 0;
-  background:#3b82f6;
-  border:none;
-  color:white;
+.section{
+ margin-top:20px;
+ background:#0f172a;
+ padding:20px;
+ border-radius:12px
 }
 
-.main { flex:1; padding:20px; background:#f1f5f9; }
+select{padding:8px;margin:5px}
 
-.cards { display:flex; gap:15px; }
-.card {
-  flex:1;
-  background:rgba(255,255,255,0.7);
-  backdrop-filter:blur(10px);
-  padding:20px;
-  border-radius:12px;
-}
+table{width:100%;border-collapse:collapse}
+td,th{padding:10px;border-bottom:1px solid #333}
 
-.section { margin-top:20px; background:white; padding:20px; border-radius:12px; }
-
-table { width:100%; border-collapse:collapse; }
-th,td { padding:10px; border-bottom:1px solid #ddd; }
-
-.def { color:red; }
+.def{color:red}
+.ok{color:#22c55e}
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<h2>📊 Dashboard</h2>
+<h2>Dashboard</h2>
+
 <button onclick="view='subject';load()">Subject</button>
 <button onclick="view='class';load()">Class</button>
 <button onclick="view='hod';load()">HOD</button>
-<button onclick="window.location='/rejected'">Rejected</button>
+
+<hr>
+
+<select id="class">
+<option value="">All Class</option>
+<option>BE</option>
+</select>
+
+<select id="batch">
+<option value="">All Batch</option>
+<option>BE-1</option>
+</select>
+
+<select id="period">
+<option value="">All Time</option>
+<option value="week">Weekly</option>
+<option value="month">Monthly</option>
+</select>
+
+<button onclick="load()">Apply</button>
 <button onclick="exportData()">Export</button>
+
 </div>
 
 <div class="main">
 
 <div class="cards">
-  <div class="card">Lectures: <span id="lec"></span></div>
-  <div class="card">Students: <span id="stu"></span></div>
-  <div class="card">Defaulters: <span id="def"></span></div>
+<div class="card">Lectures<br><h2 id="lec"></h2></div>
+<div class="card">Students<br><h2 id="stu"></h2></div>
 </div>
 
 <div class="section">
-  <canvas id="bar"></canvas>
+<canvas id="bar"></canvas>
 </div>
 
 <div class="section">
-  <canvas id="pie"></canvas>
+<canvas id="pie"></canvas>
 </div>
 
 <div class="section">
 <table>
-<thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
+<tr><th>Name</th><th>%</th><th>Status</th></tr>
 <tbody id="table"></tbody>
 </table>
 </div>
@@ -441,54 +466,54 @@ th,td { padding:10px; border-bottom:1px solid #ddd; }
 </div>
 
 <script>
-let view="subject";
-let barChart, pieChart;
+let view="subject",barChart,pieChart;
 
 async function load(){
-  const res=await fetch("/api/dashboard");
-  const data=await res.json();
+ let url="/api/dashboard?";
+ url+="classFilter="+document.getElementById("class").value+"&";
+ url+="batchFilter="+document.getElementById("batch").value+"&";
+ url+="period="+document.getElementById("period").value;
 
-  document.getElementById("lec").innerText=data.totalLectures;
-  document.getElementById("stu").innerText=Object.keys(data.studentWise).length;
-  document.getElementById("def").innerText=data.defaulters.length;
+ let d=await fetch(url).then(r=>r.json());
 
-  let labels,values;
+ document.getElementById("lec").innerText=d.totalLectures;
+ document.getElementById("stu").innerText=Object.keys(d.studentData).length;
 
-  if(view==="subject"){
-    labels=Object.keys(data.subjectWise);
-    values=Object.values(data.subjectWise);
-  }
-  else if(view==="class"){
-    labels=Object.keys(data.studentWise);
-    values=Object.values(data.studentWise);
-  }
-  else{
-    labels=Object.keys(data.classWise);
-    values=Object.values(data.classWise);
-  }
+ let labels,values;
 
-  if(barChart) barChart.destroy();
-  barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
+ if(view==="subject"){
+  labels=Object.keys(d.subject);
+  values=Object.values(d.subject);
+ }
+ else if(view==="class"){
+  labels=Object.keys(d.studentData);
+  values=Object.values(d.studentData).map(x=>x.count);
+ }
+ else{
+  labels=Object.keys(d.classWise);
+  values=Object.values(d.classWise);
+ }
 
-  if(pieChart) pieChart.destroy();
-  pieChart=new Chart(pie,{type:"pie",data:{labels:labels,datasets:[{data:values}]}});
+ if(barChart) barChart.destroy();
+ barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
 
-  const tbody=document.getElementById("table");
-  tbody.innerHTML="";
-  Object.entries(data.studentWise).forEach(([n,c])=>{
-    let percent=((c/data.totalLectures)*100).toFixed(1);
-    let def=percent<75;
-    tbody.innerHTML+=\`
-      <tr>
-        <td>\${n}</td>
-        <td>\${percent}%</td>
-        <td class="\${def?'def':''}">\${def?'Defaulter':'OK'}</td>
-      </tr>\`;
-  });
+ if(pieChart) pieChart.destroy();
+ pieChart=new Chart(pie,{type:"pie",data:{labels:labels,datasets:[{data:values}]}});
+
+ let t=document.getElementById("table");
+ t.innerHTML="";
+ Object.entries(d.studentData).forEach(([n,v])=>{
+  t.innerHTML+=\`
+  <tr>
+  <td>\${n}</td>
+  <td>\${v.percent}%</td>
+  <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
+  </tr>\`;
+ });
 }
 
 function exportData(){
-  window.location="/attendance.csv";
+ window.location="/download";
 }
 
 load();
@@ -498,4 +523,4 @@ setInterval(load,5000);
 </body>
 </html>
 `);
-});
+});s
