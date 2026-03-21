@@ -1,73 +1,260 @@
 const express = require("express");
-const { MongoClient } = require("mongodb");
+const sqlite3 = require("sqlite3").verbose();
+const path = require("path");
+const fs = require("fs");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-/*
- Render → Environment Variable (MUST EXIST)
+/* =========================
+   DATABASE SETUP
+========================= */
 
- Key   : MONGODB_URI
- Value : mongodb+srv://sayalirmali_db_user:nodemark@cluster0.p1yhjxt.mongodb.net/rfid_attendance?retryWrites=true&w=majority
-*/
+const dbPath = path.join(__dirname, "attendance.db");
+const csvPath = path.join(__dirname, "attendance.csv");
 
-const MONGO_URI = process.env.MONGODB_URI;
+const db = new sqlite3.Database(dbPath, err => {
+  if (err) console.error("❌ DB ERROR:", err.message);
+  else console.log("✅ Database connected");
+});
 
-let logsCollection;
+db.run(`
+  CREATE TABLE IF NOT EXISTS attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_no TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
 
-/* ============================
-   START SERVER AFTER DB READY
-============================ */
-async function startServer() {
-  try {
-    if (!MONGO_URI) {
-      console.error("❌ MONGODB_URI not found");
-      process.exit(1);
+if (!fs.existsSync(csvPath)) {
+  fs.writeFileSync(
+    csvPath,
+    "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n"
+  );
+  console.log("📄 attendance.csv created");
+}
+
+/* =========================
+   LOAD CSV FILES
+========================= */
+
+function loadCSV(file) {
+  const data = fs.readFileSync(path.join(__dirname, file), "utf8");
+  const lines = data.trim().split("\n");
+  const headers = lines.shift().split(",");
+
+  return lines.map(line => {
+    const values = line.split(",");
+    let obj = {};
+    headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());
+    return obj;
+  });
+}
+
+const students = loadCSV("Students.csv");
+const staffMaster = loadCSV("Staff_Master.csv");
+const timetable = loadCSV("Time_Table.csv");
+
+console.log("📚 CSV Loaded:", {
+  students: students.length,
+  staff: staffMaster.length,
+  timetable: timetable.length
+});
+
+/* =========================
+   HELPERS
+========================= */
+
+function normalize(v) {
+  return v?.toString().trim().toUpperCase();
+}
+
+/* 🔑 TIME FIX — CORE FIX */
+function timeToMinutes(t) {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function identifyCard(cardNo) {
+  const student = students.find(
+    s => normalize(s.card_no) === normalize(cardNo)
+  );
+  if (student) return { type: "STUDENT", data: student };
+
+  const staff = staffMaster.find(
+    s => normalize(s.staff_card_no) === normalize(cardNo)
+  );
+  if (staff) return { type: "STAFF", data: staff };
+
+  return { type: "UNKNOWN", data: null };
+}
+
+function getIndianTime() {
+  const utc = new Date();
+  const ist = new Date(utc.getTime() + (5.5 * 60 * 60 * 1000));
+  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+  return {
+    date: ist.toISOString().slice(0, 10),
+    time: ist.toTimeString().slice(0, 5), // HH:MM
+    day: days[ist.getDay()],
+    hour: ist.getHours()
+  };
+}
+
+/* ✅ FIXED ACTIVE SLOT LOGIC */
+function getActiveSlot(day, time, identity) {
+  const nowMin = timeToMinutes(time);
+
+  return timetable.find(slot => {
+    if (normalize(slot.day) !== normalize(day)) return false;
+
+    const startMin = timeToMinutes(slot.start_time.slice(0,5));
+    const endMin = timeToMinutes(slot.end_time.slice(0,5));
+
+    if (nowMin < startMin || nowMin > endMin) return false;
+
+    if (identity.type === "STUDENT") {
+      return (
+        normalize(slot.class) === normalize(identity.data.class) &&
+        (
+          normalize(slot.batch) === normalize(identity.data.batch) ||
+          normalize(slot.batch) === "ALL"
+        )
+      );
     }
 
-    const client = new MongoClient(MONGO_URI);
-    await client.connect();
+    if (identity.type === "STAFF") {
+      return normalize(slot.staff_id) === normalize(identity.data.staff_id);
+    }
 
-    const db = client.db("rfid_attendance");
-    logsCollection = db.collection("attendance_logs");
+    return false;
+  });
+}
 
-    console.log("✅ MongoDB connected");
+/* =========================
+   DAILY REPORT (4 PM IST)
+========================= */
 
-    // Root route
-    app.get("/", (req, res) => {
-      res.send("RFID Attendance Server Running ✅");
-    });
+function generateDailyReportIfNeeded() {
+  const { date, hour } = getIndianTime();
+  if (hour < 16) return;
 
-    // RFID log route
-    app.get("/log", async (req, res) => {
-      const cardNo = req.query.card_no;
+  const reportFile = `attendance_${date}.csv`;
+  const reportPath = path.join(__dirname, reportFile);
 
-      if (!cardNo) {
-        return res.status(400).send("NO CARD");
-      }
-
-      try {
-        await logsCollection.insertOne({
-          card_no: cardNo,
-          timestamp: new Date()
-        });
-
-        console.log("📌 Attendance logged:", cardNo);
-        res.send("OK");
-      } catch (err) {
-        console.error("❌ Insert error:", err);
-        res.status(500).send("ERROR");
-      }
-    });
-
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
-
-  } catch (err) {
-    console.error("❌ MongoDB connection failed:", err);
-    process.exit(1);
+  if (!fs.existsSync(reportPath)) {
+    fs.copyFileSync(csvPath, reportPath);
+    console.log(`📁 DAILY REPORT GENERATED: ${reportFile}`);
   }
 }
 
-startServer();
+/* =========================
+   ROUTES
+========================= */
+
+app.get("/", (req, res) => {
+  res.send("RFID Attendance Server Running");
+});
+
+app.get("/log", (req, res) => {
+  generateDailyReportIfNeeded();
+
+  const cardNo = req.query.card_no;
+  console.log("\n🔔 SCAN REQUEST RECEIVED");
+  console.log("🆔 Card No:", cardNo);
+
+  if (!cardNo) {
+    console.log("❌ REJECTED: No card number");
+    return res.send("NO_CARD");
+  }
+
+  const identity = identifyCard(cardNo);
+
+  if (identity.type === "UNKNOWN") {
+    console.log("❌ REJECTED: Unknown card");
+    return res.send("UNKNOWN_CARD");
+  }
+
+  console.log("👤 Type:", identity.type);
+  console.log("📛 Name:",
+    identity.type === "STUDENT"
+      ? identity.data.student_name
+      : identity.data.staff_name
+  );
+
+  const { date, time, day } = getIndianTime();
+  console.log("🕒 Time:", day, time);
+
+  const slot = getActiveSlot(day, time, identity);
+
+  if (!slot) {
+    console.log("❌ REJECTED: No active timetable slot");
+    return res.send("NO_SLOT");
+  }
+
+  console.log("📘 Subject:", slot.subject);
+  console.log("🏫 Class:", slot.class);
+  console.log("👥 Batch:",
+    identity.type === "STUDENT"
+      ? identity.data.batch
+      : slot.batch
+  );
+
+  /* PROXY PREVENTION (10 min) */
+  db.get(
+    `SELECT timestamp FROM attendance WHERE card_no=? ORDER BY timestamp DESC LIMIT 1`,
+    [normalize(cardNo)],
+    (err, row) => {
+      if (row) {
+        const diff = (new Date() - new Date(row.timestamp)) / 1000;
+        if (diff < 600) {
+          console.log("🚫 REJECTED: Duplicate scan");
+          return res.send("DUPLICATE");
+        }
+      }
+
+      db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
+
+      const csvLine = [
+        date,
+        time,
+        identity.type,
+        identity.type === "STUDENT"
+          ? identity.data.student_name
+          : identity.data.staff_name,
+        normalize(cardNo),
+        slot.class,
+        identity.type === "STUDENT"
+          ? identity.data.batch
+          : slot.batch,
+        slot.subject
+      ].join(",") + "\n";
+
+      fs.appendFile(csvPath, csvLine, () => {});
+
+      console.log("✅ ATTENDANCE LOGGED SUCCESSFULLY");
+      res.send("OK");
+    }
+  );
+});
+
+app.get("/download", (req, res) => {
+  res.download(csvPath, "attendance.csv");
+});
+
+app.get("/download/today", (req, res) => {
+  const { date } = getIndianTime();
+  const file = `attendance_${date}.csv`;
+  const filePath = path.join(__dirname, file);
+
+  if (!fs.existsSync(filePath)) {
+    return res.send("Daily report not generated yet");
+  }
+
+  res.download(filePath);
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
