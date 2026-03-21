@@ -271,180 +271,192 @@ app.get("/api/dashboard", (req, res) => {
     return { date,time,role,name,card,className,batch,subject };
   });
 
-  const { classFilter, subjectFilter, dateFilter } = req.query;
+  // ✅ ONLY STUDENTS
+  records = records.filter(r => r.role === "STUDENT");
 
-  if (classFilter) records = records.filter(r => r.className === classFilter);
-  if (subjectFilter) records = records.filter(r => r.subject === subjectFilter);
-  if (dateFilter) records = records.filter(r => r.date === dateFilter);
+  const today = new Date().toISOString().slice(0,10);
 
+  const todayRecords = records.filter(r => r.date === today);
+
+  // SUBJECT
   let subjectWise = {};
-  let studentWise = {};
+  let lectureCount = {};
 
   records.forEach(r => {
     subjectWise[r.subject] = (subjectWise[r.subject] || 0) + 1;
+    lectureCount[r.subject] = (lectureCount[r.subject] || 0) + 1;
+  });
+
+  // STUDENT
+  let studentWise = {};
+  records.forEach(r => {
     studentWise[r.name] = (studentWise[r.name] || 0) + 1;
   });
 
+  // CLASS
+  let classWise = {};
+  records.forEach(r => {
+    classWise[r.className] = (classWise[r.className] || 0) + 1;
+  });
+
+  // DEFAULTERS (<3 logic demo)
   let defaulters = Object.entries(studentWise)
-    .filter(([name, count]) => count < 3)
-    .map(([name]) => name);
+    .filter(([n,c]) => c < 3)
+    .map(([n]) => n);
 
   res.json({
     total: records.length,
+    today: todayRecords.length,
     subjectWise,
     studentWise,
+    classWise,
     defaulters,
     records
   });
 });
-
-
 /* =========================
    WEB DASHBOARD
 ========================= */
 
 app.get("/dashboard", (req, res) => {
-  res.send(`
+res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-<title>RFID Dashboard</title>
+<title>Smart Attendance Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { font-family: Arial; background:#f4f6f8; padding:20px; }
-h1 { text-align:center; }
+body { font-family: Arial; background:#eef2f7; margin:0; }
 
-.card {
-  background:white;
-  padding:15px;
-  margin:10px;
-  border-radius:10px;
-  box-shadow:0 2px 5px rgba(0,0,0,0.1);
-}
-
-button {
+.nav {
+  background:#1e293b;
   padding:10px;
+  text-align:center;
+}
+.nav button {
   margin:5px;
-  background:#007bff;
+  padding:10px;
   color:white;
+  background:#3b82f6;
   border:none;
   border-radius:5px;
 }
 
-input { padding:5px; margin:5px; }
+.container { padding:20px; }
+
+.cards {
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.card {
+  flex:1;
+  background:white;
+  padding:15px;
+  border-radius:10px;
+  text-align:center;
+}
+
+.section {
+  margin-top:20px;
+  background:white;
+  padding:15px;
+  border-radius:10px;
+}
 
 table { width:100%; border-collapse:collapse; }
 th,td { padding:8px; border-bottom:1px solid #ddd; }
+
 </style>
 </head>
 
 <body>
 
-<h1>📊 RFID Attendance Dashboard</h1>
-
-<div>
-  <button onclick="setView('subject')">Subject Teacher</button>
-  <button onclick="setView('class')">Class Teacher</button>
-  <button onclick="setView('hod')">HOD</button>
+<div class="nav">
+  <button onclick="view='subject';load()">Subject Teacher</button>
+  <button onclick="view='class';load()">Class Teacher</button>
+  <button onclick="view='hod';load()">HOD</button>
 </div>
 
-<div class="card">
-  Class: <input id="classFilter">
-  Subject: <input id="subjectFilter">
-  Date: <input type="date" id="dateFilter">
-  <button onclick="loadData()">Apply</button>
+<div class="container">
+
+<div class="cards">
+  <div class="card">Total: <span id="total"></span></div>
+  <div class="card">Today: <span id="today"></span></div>
+  <div class="card">Defaulters: <span id="def"></span></div>
 </div>
 
-<div class="card">
-  <h2>Total Attendance: <span id="total"></span></h2>
-</div>
-
-<div class="card">
+<div class="section">
   <canvas id="chart"></canvas>
 </div>
 
-<div class="card">
-  <h2>⚠ Defaulters</h2>
-  <div id="defaulters"></div>
-</div>
-
-<div class="card">
+<div class="section">
+  <h3>Student Report</h3>
   <table>
     <thead>
-      <tr>
-        <th>Name</th><th>Subject</th><th>Class</th><th>Time</th>
-      </tr>
+      <tr><th>Name</th><th>Attendance</th></tr>
     </thead>
     <tbody id="table"></tbody>
   </table>
 </div>
 
+</div>
+
 <script>
+let view="subject";
 let chart;
-let currentView = "subject";
 
-function setView(view){
-  currentView = view;
-  loadData();
-}
-
-async function loadData(){
-  let url = "/api/dashboard?";
-
-  const c = document.getElementById("classFilter").value;
-  const s = document.getElementById("subjectFilter").value;
-  const d = document.getElementById("dateFilter").value;
-
-  if(c) url += "classFilter="+c+"&";
-  if(s) url += "subjectFilter="+s+"&";
-  if(d) url += "dateFilter="+d+"&";
-
-  const res = await fetch(url);
+async function load(){
+  const res = await fetch("/api/dashboard");
   const data = await res.json();
 
   document.getElementById("total").innerText = data.total;
+  document.getElementById("today").innerText = data.today;
+  document.getElementById("def").innerText = data.defaulters.length;
 
-  document.getElementById("defaulters").innerHTML =
-    data.defaulters.map(x => "<p>"+x+"</p>").join("");
-
+  // TABLE
   const tbody = document.getElementById("table");
-  tbody.innerHTML = "";
-
-  data.records.slice(-10).reverse().forEach(r => {
-    tbody.innerHTML += \`
-      <tr>
-        <td>\${r.name}</td>
-        <td>\${r.subject}</td>
-        <td>\${r.className}</td>
-        <td>\${r.time}</td>
-      </tr>
-    \`;
+  tbody.innerHTML="";
+  Object.entries(data.studentWise).forEach(([n,c])=>{
+    tbody.innerHTML += "<tr><td>"+n+"</td><td>"+c+"</td></tr>";
   });
 
   let labels, values;
 
-  if(currentView==="subject"){
+  if(view==="subject"){
     labels = Object.keys(data.subjectWise);
     values = Object.values(data.subjectWise);
-  } else {
+  }
+  else if(view==="class"){
     labels = Object.keys(data.studentWise);
     values = Object.values(data.studentWise);
+  }
+  else{
+    labels = Object.keys(data.classWise);
+    values = Object.values(data.classWise);
   }
 
   if(chart) chart.destroy();
 
   chart = new Chart(document.getElementById("chart"), {
     type:"bar",
-    data:{ labels:labels, datasets:[{ label:"Attendance", data:values }] }
+    data:{
+      labels:labels,
+      datasets:[{
+        label:"Attendance",
+        data:values,
+        backgroundColor:"#3b82f6"
+      }]
+    }
   });
 }
 
-loadData();
-setInterval(loadData,5000);
+load();
+setInterval(load,5000);
 </script>
 
 </body>
 </html>
-  `);
+`);
 });
