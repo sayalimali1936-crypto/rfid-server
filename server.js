@@ -523,4 +523,4 @@ setInterval(load,5000);
 </body>
 </html>
 `);
-});s
+});
