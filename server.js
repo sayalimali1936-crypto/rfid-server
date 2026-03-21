@@ -197,58 +197,198 @@ res.send(`
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;display:flex;background:#020617;color:white;font-family:Segoe UI}
-.sidebar{width:240px;background:#1e293b;padding:20px}
-.sidebar button{width:100%;margin:5px;padding:10px;background:#6366f1;border:none;color:white;border-radius:6px}
-.main{flex:1;padding:20px}
+body{
+ margin:0;
+ font-family:'Segoe UI';
+ display:flex;
+ background:linear-gradient(135deg,#020617,#0f172a);
+ color:white;
+}
 
-.card{background:#111827;padding:20px;margin:10px;border-radius:10px}
-.def{color:red}
-.ok{color:#22c55e}
+/* SIDEBAR */
+.sidebar{
+ width:240px;
+ background:linear-gradient(180deg,#1e3a8a,#020617);
+ padding:20px;
+ box-shadow:2px 0 10px rgba(0,0,0,0.5);
+}
+
+.sidebar h2{
+ text-align:center;
+ margin-bottom:20px;
+}
+
+.sidebar button{
+ width:100%;
+ padding:12px;
+ margin:6px 0;
+ border:none;
+ border-radius:10px;
+ background:#6366f1;
+ color:white;
+ cursor:pointer;
+ transition:0.3s;
+}
+
+.sidebar button:hover{
+ background:#4f46e5;
+ transform:translateX(5px);
+}
+
+/* MAIN */
+.main{
+ flex:1;
+ padding:25px;
+}
+
+/* CARDS */
+.cards{
+ display:flex;
+ gap:15px;
+}
+
+.card{
+ flex:1;
+ background:rgba(255,255,255,0.08);
+ backdrop-filter:blur(12px);
+ padding:20px;
+ border-radius:16px;
+ text-align:center;
+ box-shadow:0 5px 20px rgba(0,0,0,0.4);
+ transition:0.3s;
+}
+
+.card:hover{
+ transform:scale(1.05);
+}
+
+/* SECTIONS */
+.section{
+ margin-top:20px;
+ background:rgba(255,255,255,0.05);
+ padding:20px;
+ border-radius:16px;
+ box-shadow:0 5px 20px rgba(0,0,0,0.4);
+}
+
+/* TABLE */
+table{
+ width:100%;
+ border-collapse:collapse;
+ margin-top:10px;
+}
+
+th{
+ text-align:left;
+ padding:12px;
+ color:#94a3b8;
+}
+
+td{
+ padding:10px;
+ border-bottom:1px solid #334155;
+}
+
+tr:hover{
+ background:rgba(255,255,255,0.05);
+}
+
+.def{ color:#ef4444; font-weight:bold; }
+.ok{ color:#22c55e; }
+
+/* TITLE */
+.title{
+ font-size:22px;
+ margin-bottom:10px;
+}
+
+/* CANVAS FIX */
+canvas{
+ background:#020617;
+ border-radius:12px;
+ padding:10px;
+}
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<button onclick="view='subject';load()">Subject</button>
-<button onclick="view='class';load()">Class</button>
-<button onclick="view='hod';load()">HOD</button>
+<h2>📊 Smart Dashboard</h2>
+
+<button onclick="setView('subject')">📘 Subject</button>
+<button onclick="setView('class')">👩‍🏫 Class</button>
+<button onclick="setView('hod')">🏫 HOD</button>
 
 <hr>
-<button onclick="window.location='/report'">Report</button>
-<button onclick="window.location='/download'">Export</button>
+
+<button onclick="exportData()">⬇ Export CSV</button>
 </div>
 
 <div class="main">
 
-<div class="card">
-<h3>Total Lectures: <span id="lec"></span></h3>
+<div class="cards">
+ <div class="card">
+   <div class="title">📚 Lectures</div>
+   <h2 id="lec"></h2>
+ </div>
+ <div class="card">
+   <div class="title">👨‍🎓 Students</div>
+   <h2 id="stu"></h2>
+ </div>
+ <div class="card">
+   <div class="title">⚠ Defaulters</div>
+   <h2 id="def"></h2>
+ </div>
 </div>
 
-<canvas id="chart"></canvas>
+<div class="section">
+ <div class="title">📊 Analytics</div>
+ <canvas id="bar"></canvas>
+</div>
 
-<div class="card">
-<table id="table"></table>
+<div class="section">
+ <div class="title">📈 Distribution</div>
+ <canvas id="pie"></canvas>
+</div>
+
+<div class="section">
+ <div class="title">📋 Student Report</div>
+ <table>
+  <thead>
+   <tr><th>Name</th><th>Attendance %</th><th>Status</th></tr>
+  </thead>
+  <tbody id="table"></tbody>
+ </table>
 </div>
 
 </div>
 
 <script>
-let view="subject",chart;
+let view="subject";
+let barChart,pieChart;
+
+function setView(v){
+ view=v;
+ load();
+}
 
 async function load(){
  let d=await fetch("/api/dashboard").then(r=>r.json());
 
  document.getElementById("lec").innerText=d.totalLectures;
+ document.getElementById("stu").innerText=Object.keys(d.studentData).length;
+
+ let defCount=Object.values(d.studentData).filter(x=>x.def).length;
+ document.getElementById("def").innerText=defCount;
 
  let labels,values;
 
- if(view=="subject"){
+ if(view==="subject"){
   labels=Object.keys(d.subject);
   values=Object.values(d.subject);
  }
- else if(view=="class"){
+ else if(view==="class"){
   labels=Object.keys(d.studentData);
   values=Object.values(d.studentData).map(x=>x.count);
  }
@@ -257,33 +397,56 @@ async function load(){
   values=Object.values(d.classWise);
  }
 
- if(chart) chart.destroy();
- chart=new Chart(document.getElementById("chart"),{
+ if(barChart) barChart.destroy();
+ barChart=new Chart(bar,{
   type:"bar",
-  data:{labels:labels,datasets:[{data:values}]}
+  data:{
+    labels:labels,
+    datasets:[{
+      label:"Attendance",
+      data:values,
+      backgroundColor:"#6366f1"
+    }]
+  }
+ });
+
+ if(pieChart) pieChart.destroy();
+ pieChart=new Chart(pie,{
+  type:"doughnut",
+  data:{
+    labels:labels,
+    datasets:[{
+      data:values,
+      backgroundColor:["#6366f1","#22c55e","#f59e0b","#ef4444","#3b82f6"]
+    }]
+  }
  });
 
  let t=document.getElementById("table");
  t.innerHTML="";
+
  Object.entries(d.studentData).forEach(([n,v])=>{
   t.innerHTML+=\`
-  <tr>
-   <td>\${n}</td>
-   <td>\${v.percent}%</td>
-   <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
-  </tr>\`;
+   <tr>
+     <td>\${n}</td>
+     <td>\${v.percent}%</td>
+     <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
+   </tr>\`;
  });
 }
 
+function exportData(){
+ window.location="/download";
+}
+
 load();
+setInterval(load,5000);
 </script>
 
 </body>
 </html>
 `);
-});
-
-/* =========================
+});/* =========================
    START SERVER
 ========================= */
 
