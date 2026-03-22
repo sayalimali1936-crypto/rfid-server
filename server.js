@@ -231,30 +231,40 @@ th,td{padding:10px;border-bottom:1px solid #334155;}
 <div class="sidebar">
 <h2>📊 Dashboard</h2>
 <button onclick="go('/home')">🏠 Home</button>
-<button onclick="go('/subject')">📘 Subject</button>
-<button onclick="go('/class')">👩‍🏫 Class</button>
+<button onclick="go('/subject')">📘 Subject Teacher</button>
+<button onclick="go('/class')">👩‍🏫 Class Teacher</button>
 <button onclick="go('/hod')">🏫 HOD</button>
 <hr>
 <button onclick="exportData()">⬇ Export</button>
 </div>
 <div class="main">
 <h2>${title}</h2>
+
+<!-- KPI Cards -->
 <div class="cards">
 <div class="card">Lectures<h2 id="lec"></h2></div>
 <div class="card">Students<h2 id="stu"></h2></div>
 <div class="card">Defaulters<h2 id="def"></h2></div>
 </div>
+
+<!-- Charts -->
 <div class="grid">
 <div class="section"><canvas id="bar"></canvas></div>
 <div class="section"><canvas id="pie"></canvas></div>
 </div>
 <div class="section"><canvas id="line"></canvas></div>
+
+<!-- Table -->
 <div class="section">
 <table>
 <thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
 <tbody id="table"></tbody>
 </table>
 </div>
+
+<!-- Extra role-specific info -->
+<div class="section" id="extra"></div>
+
 </div>
 <script>
 let barChart,pieChart,lineChart;
@@ -265,19 +275,24 @@ async function load(){
  stu.innerText=Object.keys(d.studentData).length;
  def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
 
- let labels,values;
+ let labels,values,extra="";
  if("${mode}"==="subject"){
    labels=Object.keys(d.subjectWise);
    values=Object.values(d.subjectWise);
+   extra="<h3>Subject Teacher Metrics</h3><p>Total students present today: "+Object.keys(d.studentData).length+"</p>";
  }
  else if("${mode}"==="class"){
    labels=Object.keys(d.studentData);
    values=Object.values(d.studentData).map(x=>x.count);
+   extra="<h3>Class Teacher Metrics</h3><p>Subject-wise attendance shown above. Weekly/overall defaulters flagged in table.</p>";
  }
  else{ // HOD
    labels=Object.keys(d.classWise);
    values=Object.values(d.classWise);
+   extra="<h3>HOD Metrics</h3><p>Class and subject-wise overview.</p>";
  }
+
+ document.getElementById("extra").innerHTML=extra;
 
  if(barChart) barChart.destroy();
  barChart=new Chart(document.getElementById("bar"),{
@@ -316,7 +331,6 @@ setInterval(load,5000);
 </html>
 `;
 }
-
 /* =========================
    VIEWS
 ========================= */
