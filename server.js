@@ -7,28 +7,35 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 /* =========================
-   DATABASE SETUP (UNCHANGED)
+   DATABASE SETUP
 ========================= */
 
 const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 
-const db = new sqlite3.Database(dbPath);
+const db = new sqlite3.Database(dbPath, err => {
+  if (err) console.error("❌ DB ERROR:", err.message);
+  else console.log("✅ Database connected");
+});
 
 db.run(`
-CREATE TABLE IF NOT EXISTS attendance (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  card_no TEXT,
-  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-)`);
+  CREATE TABLE IF NOT EXISTS attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_no TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
 
 if (!fs.existsSync(csvPath)) {
-  fs.writeFileSync(csvPath,
-    "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
+  fs.writeFileSync(
+    csvPath,
+    "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n"
+  );
+  console.log("📄 attendance.csv created");
 }
 
 /* =========================
-   LOAD CSV FILES (UNCHANGED)
+   LOAD CSV FILES
 ========================= */
 
 function loadCSV(file) {
@@ -48,96 +55,208 @@ const students = loadCSV("Students.csv");
 const staffMaster = loadCSV("Staff_Master.csv");
 const timetable = loadCSV("Time_Table.csv");
 
+console.log("📚 CSV Loaded:", {
+  students: students.length,
+  staff: staffMaster.length,
+  timetable: timetable.length
+});
+
 /* =========================
-   HELPERS (UNCHANGED)
+   HELPERS
 ========================= */
 
 function normalize(v) {
   return v?.toString().trim().toUpperCase();
 }
 
+/* 🔑 TIME FIX — CORE FIX */
+function timeToMinutes(t) {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
 function identifyCard(cardNo) {
-  const student = students.find(s => normalize(s.card_no) === normalize(cardNo));
+  const student = students.find(
+    s => normalize(s.card_no) === normalize(cardNo)
+  );
   if (student) return { type: "STUDENT", data: student };
 
-  const staff = staffMaster.find(s => normalize(s.staff_card_no) === normalize(cardNo));
+  const staff = staffMaster.find(
+    s => normalize(s.staff_card_no) === normalize(cardNo)
+  );
   if (staff) return { type: "STAFF", data: staff };
 
-  return { type: "UNKNOWN" };
+  return { type: "UNKNOWN", data: null };
 }
 
 function getIndianTime() {
-  const d = new Date(new Date().getTime() + 19800000);
+  const utc = new Date();
+  const ist = new Date(utc.getTime() + (5.5 * 60 * 60 * 1000));
+  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
   return {
-    date: d.toISOString().slice(0,10),
-    time: d.toTimeString().slice(0,5)
+    date: ist.toISOString().slice(0, 10),
+    time: ist.toTimeString().slice(0, 5), // HH:MM
+    day: days[ist.getDay()],
+    hour: ist.getHours()
   };
 }
 
-/* =========================
-   RFID LOG (UNCHANGED)
-========================= */
+/* ✅ FIXED ACTIVE SLOT LOGIC */
+function getActiveSlot(day, time, identity) {
+  const nowMin = timeToMinutes(time);
 
-app.get("/log",(req,res)=>{
-  const card=req.query.card_no;
-  if(!card) return res.send("NO_CARD");
+  return timetable.find(slot => {
+    if (normalize(slot.day) !== normalize(day)) return false;
 
-  const id=identifyCard(card);
-  if(id.type==="UNKNOWN") return res.send("UNKNOWN");
+    const startMin = timeToMinutes(slot.start_time.slice(0,5));
+    const endMin = timeToMinutes(slot.end_time.slice(0,5));
 
-  const {date,time}=getIndianTime();
+    if (nowMin < startMin || nowMin > endMin) return false;
 
-  const csv=[date,time,id.type,
-    id.data?.student_name||id.data?.staff_name,
-    card,
-    id.data?.class||"",
-    id.data?.batch||"",
-    "Subject"
-  ].join(",")+"\n";
+    if (identity.type === "STUDENT") {
+      return (
+        normalize(slot.class) === normalize(identity.data.class) &&
+        (
+          normalize(slot.batch) === normalize(identity.data.batch) ||
+          normalize(slot.batch) === "ALL"
+        )
+      );
+    }
 
-  fs.appendFile(csvPath,csv,()=>{});
-  res.send("OK");
-});
+    if (identity.type === "STAFF") {
+      return normalize(slot.staff_id) === normalize(identity.data.staff_id);
+    }
 
-/* =========================
-   LOGIN
-========================= */
-
-app.get("/login",(req,res)=>{
-res.send(`
-<h2 style="text-align:center">Login</h2>
-<div style="text-align:center">
-<select id="role">
-<option value="teacher">Teacher</option>
-<option value="hod">HOD</option>
-</select><br><br>
-<input id="pass" type="password"><br><br>
-<button onclick="go()">Login</button>
-</div>
-
-<script>
-function go(){
- if(document.getElementById("pass").value=="1234")
- location="/dashboard";
- else alert("Wrong");
+    return false;
+  });
 }
-</script>
-`);
-});
 
 /* =========================
-   ADVANCED API
+   DAILY REPORT (4 PM IST)
 ========================= */
 
-app.get("/api/dashboard",(req,res)=>{
- const data=fs.readFileSync(csvPath,"utf8").split("\n").slice(1);
+function generateDailyReportIfNeeded() {
+  const { date, hour } = getIndianTime();
+  if (hour < 16) return;
 
- let records=data.map(l=>{
-  let [d,t,r,n,c,cl,b,s]=l.split(",");
-  return {d,n,cl,b,s};
- }).filter(x=>x.n);
+  const reportFile = `attendance_${date}.csv`;
+  const reportPath = path.join(__dirname, reportFile);
 
- let student={},subject={},classWise={};
+  if (!fs.existsSync(reportPath)) {
+    fs.copyFileSync(csvPath, reportPath);
+    console.log(`📁 DAILY REPORT GENERATED: ${reportFile}`);
+  }
+}
 
- records.forEach(r=>{
-  student[r.n]=(student
+/* =========================
+   ROUTES
+========================= */
+
+app.get("/", (req, res) => {
+  res.send("RFID Attendance Server Running");
+});
+
+app.get("/log", (req, res) => {
+  generateDailyReportIfNeeded();
+
+  const cardNo = req.query.card_no;
+  console.log("\n🔔 SCAN REQUEST RECEIVED");
+  console.log("🆔 Card No:", cardNo);
+
+  if (!cardNo) {
+    console.log("❌ REJECTED: No card number");
+    return res.send("NO_CARD");
+  }
+
+  const identity = identifyCard(cardNo);
+
+  if (identity.type === "UNKNOWN") {
+    console.log("❌ REJECTED: Unknown card");
+    return res.send("UNKNOWN_CARD");
+  }
+
+  console.log("👤 Type:", identity.type);
+  console.log("📛 Name:",
+    identity.type === "STUDENT"
+      ? identity.data.student_name
+      : identity.data.staff_name
+  );
+
+  const { date, time, day } = getIndianTime();
+  console.log("🕒 Time:", day, time);
+
+  const slot = getActiveSlot(day, time, identity);
+
+  if (!slot) {
+    console.log("❌ REJECTED: No active timetable slot");
+    return res.send("NO_SLOT");
+  }
+
+  console.log("📘 Subject:", slot.subject);
+  console.log("🏫 Class:", slot.class);
+  console.log("👥 Batch:",
+    identity.type === "STUDENT"
+      ? identity.data.batch
+      : slot.batch
+  );
+
+  /* PROXY PREVENTION (10 min) */
+  db.get(
+    `SELECT timestamp FROM attendance WHERE card_no=? ORDER BY timestamp DESC LIMIT 1`,
+    [normalize(cardNo)],
+    (err, row) => {
+      if (row) {
+        const diff = (new Date() - new Date(row.timestamp)) / 1000;
+        if (diff < 600) {
+          console.log("🚫 REJECTED: Duplicate scan");
+          return res.send("DUPLICATE");
+        }
+      }
+
+      db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
+
+      const csvLine = [
+        date,
+        time,
+        identity.type,
+        identity.type === "STUDENT"
+          ? identity.data.student_name
+          : identity.data.staff_name,
+        normalize(cardNo),
+        slot.class,
+        identity.type === "STUDENT"
+          ? identity.data.batch
+          : slot.batch,
+        slot.subject
+      ].join(",") + "\n";
+
+      fs.appendFile(csvPath, csvLine, () => {});
+
+      console.log("✅ ATTENDANCE LOGGED SUCCESSFULLY");
+      res.send("OK");
+    }
+  );
+});
+
+app.get("/download", (req, res) => {
+  res.download(csvPath, "attendance.csv");
+});
+
+app.get("/download/today", (req, res) => {
+  const { date } = getIndianTime();
+  const file = `attendance_${date}.csv`;
+  const filePath = path.join(__dirname, file);
+
+  if (!fs.existsSync(filePath)) {
+    return res.send("Daily report not generated yet");
+  }
+
+  res.download(filePath);
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
+
+
