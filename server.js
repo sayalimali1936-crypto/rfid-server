@@ -1,23 +1,13 @@
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
-const path = require("path");
 const fs = require("fs");
+const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-/* ================= DATABASE ================= */
-const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 
-const db = new sqlite3.Database(dbPath);
-
-db.run(`CREATE TABLE IF NOT EXISTS attendance (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- card_no TEXT,
- timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-)`);
-
+/* ================= INIT ================= */
 if (!fs.existsSync(csvPath)) {
  fs.writeFileSync(csvPath,
   "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
@@ -36,12 +26,12 @@ app.get("/log",(req,res)=>{
  res.send("OK");
 });
 
-/* ================= ANALYTICS ================= */
+/* ================= DATA ENGINE ================= */
 function getData(){
 
  const raw=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
- let today=new Date().toISOString().slice(0,10);
+ const today=new Date().toISOString().slice(0,10);
 
  let records=raw.map(l=>{
   let p=l.split(",");
@@ -54,8 +44,7 @@ function getData(){
   };
  }).filter(x=>x && x.name);
 
- let student={},subject={},classWise={},todayMap={};
- let studentSubject={};
+ let student={},subject={},classWise={},todayMap={},studentSubject={};
 
  records.forEach(r=>{
   student[r.name]=(student[r.name]||0)+1;
@@ -92,14 +81,14 @@ app.get("/api",(req,res)=>{
 /* ================= LOGIN ================= */
 app.get("/",(req,res)=>{
 res.send(`
-<h2 style="text-align:center">Login</h2>
+<h2 style="text-align:center">Smart Attendance Login</h2>
 <select id="role">
 <option value="subject">Subject Teacher</option>
 <option value="class">Class Teacher</option>
 <option value="hod">HOD</option>
 </select>
 <br><br>
-<button onclick="go()">Enter</button>
+<button onclick="go()">Enter Dashboard</button>
 
 <script>
 function go(){
@@ -119,29 +108,93 @@ res.send(`
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;font-family:Segoe UI;background:#020617;color:white;display:flex}
-.sidebar{width:220px;background:#020617;padding:20px}
-.sidebar button{width:100%;padding:10px;margin:5px;background:#1e293b;color:white;border:none}
-.main{flex:1;padding:20px}
-.cards{display:flex;gap:10px}
-.card{flex:1;padding:20px;background:#1e293b;border-radius:10px;text-align:center}
-.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
-table{width:100%;border-collapse:collapse;margin-top:20px}
-td,th{padding:10px;border-bottom:1px solid #334155}
-.def{color:red}
-.ok{color:lime}
-</style>
+body{
+ margin:0;
+ font-family:Segoe UI;
+ background:#0f172a;
+ color:white;
+ display:flex;
+}
 
+/* SIDEBAR */
+.sidebar{
+ width:220px;
+ background:#020617;
+ padding:20px;
+ border-right:1px solid #334155;
+}
+.sidebar h3{margin-bottom:10px}
+.sidebar button{
+ width:100%;
+ padding:10px;
+ margin:6px 0;
+ border:none;
+ border-radius:6px;
+ background:#1e293b;
+ color:white;
+ cursor:pointer;
+}
+.sidebar button:hover{background:#6366f1}
+
+/* MAIN */
+.main{
+ flex:1;
+ padding:20px;
+}
+
+/* CARDS */
+.cards{
+ display:flex;
+ gap:15px;
+ margin-bottom:20px;
+}
+.card{
+ flex:1;
+ background:#1e293b;
+ padding:20px;
+ border-radius:10px;
+ text-align:center;
+}
+
+/* CHART GRID */
+.grid{
+ display:grid;
+ grid-template-columns:2fr 1fr;
+ gap:20px;
+}
+
+/* TABLE */
+table{
+ width:100%;
+ border-collapse:collapse;
+ margin-top:20px;
+}
+td,th{
+ padding:10px;
+ border-bottom:1px solid #334155;
+}
+.def{color:#ef4444}
+.ok{color:#22c55e}
+
+/* REPORT */
+.report{
+ margin-top:20px;
+ background:#1e293b;
+ padding:15px;
+ border-radius:10px;
+}
+</style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<button onclick="load('subject')">Subject</button>
-<button onclick="load('class')">Class</button>
-<button onclick="load('hod')">HOD</button>
-<button onclick="report()">Student Report</button>
-<button onclick="exportPDF()">Export PDF</button>
+<h3>Dashboard</h3>
+<button onclick="load('subject')">Subject View</button>
+<button onclick="load('class')">Class View</button>
+<button onclick="load('hod')">HOD View</button>
+<button onclick="generateReport()">Student Report</button>
+<button onclick="window.print()">Export PDF</button>
 </div>
 
 <div class="main">
@@ -157,39 +210,52 @@ td,th{padding:10px;border-bottom:1px solid #334155}
 <canvas id="pie"></canvas>
 </div>
 
-<canvas id="line"></canvas>
+<canvas id="line" style="margin-top:20px"></canvas>
 
 <table>
-<tr><th>Name</th><th>%</th><th>Today</th><th>Status</th></tr>
+<tr>
+<th>Name</th>
+<th>%</th>
+<th>Today</th>
+<th>Status</th>
+</tr>
 <tbody id="table"></tbody>
 </table>
+
+<div class="report" id="reportBox">
+<h3>Student Report</h3>
+<div id="reportContent">Select a student</div>
+</div>
 
 </div>
 
 <script>
 
-let dataGlobal;
+let dataStore;
+let charts={};
 
 async function load(view){
 
- let d=await fetch("/api").then(r=>r.json());
- dataGlobal=d;
+ const d=await fetch("/api").then(r=>r.json());
+ dataStore=d;
 
  lec.innerText=d.totalLectures;
  stu.innerText=Object.keys(d.studentData).length;
  def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
 
- let labels = view==="hod" ? Object.keys(d.classWise) : Object.keys(d.subject);
- let values = view==="hod" ? Object.values(d.classWise) : Object.values(d.subject);
+ let labels=view==="hod"?Object.keys(d.classWise):Object.keys(d.subject);
+ let values=view==="hod"?Object.values(d.classWise):Object.values(d.subject);
 
- new Chart(bar,{type:"bar",data:{labels,datasets:[{data:values}]}});
+ updateChart("bar","bar",labels,values);
+ updateChart("pie","doughnut",labels,values);
+ updateChart("line","line",labels,values);
 
  let t=document.getElementById("table");
  t.innerHTML="";
 
  Object.entries(d.studentData).forEach(([n,v])=>{
   t.innerHTML+=\`
-  <tr>
+  <tr onclick="showReport('\${n}')">
     <td>\${n}</td>
     <td>\${v.percent}%</td>
     <td>\${v.today?'✔':'❌'}</td>
@@ -198,27 +264,28 @@ async function load(view){
  });
 }
 
-function report(){
- let name=prompt("Enter student name");
- let s=dataGlobal.studentData[name];
-
- if(!s) return alert("No data");
-
- let html="<h2>"+name+"</h2>";
- html+="<p>Overall: "+s.percent+"%</p>";
-
- html+="<h3>Subjects</h3><ul>";
- for(let sub in s.subjects){
-  html+="<li>"+sub+": "+s.subjects[sub]+"</li>";
- }
- html+="</ul>";
-
- let w=window.open();
- w.document.write(html);
+function updateChart(id,type,labels,data){
+ if(charts[id]) charts[id].destroy();
+ charts[id]=new Chart(document.getElementById(id),{
+  type:type,
+  data:{labels,datasets:[{data:data}]}
+ });
 }
 
-function exportPDF(){
- window.print();
+function showReport(name){
+ let s=dataStore.studentData[name];
+ let html="<b>"+name+"</b><br>Overall: "+s.percent+"%<br><br>";
+
+ for(let sub in s.subjects){
+  html+=sub+" : "+s.subjects[sub]+"<br>";
+ }
+
+ document.getElementById("reportContent").innerHTML=html;
+}
+
+function generateReport(){
+ let name=prompt("Enter student name");
+ if(name) showReport(name);
 }
 
 load("subject");
