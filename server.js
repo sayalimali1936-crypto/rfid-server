@@ -371,7 +371,6 @@ res.send("<h1 style='text-align:center'>🚫 Rejected Scans</h1>");
    🎨 FINAL POWER BI DASHBOARD
 ========================================================= */
 app.get("/dashboard",(req,res)=>{
-
 res.send(`
 <!DOCTYPE html>
 <html>
@@ -379,13 +378,27 @@ res.send(`
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;display:flex;font-family:Segoe UI;background:#020617;color:white}
+body{
+ margin:0;
+ font-family:'Segoe UI';
+ display:flex;
+ background:linear-gradient(135deg,#020617,#0f172a);
+ color:white;
+ animation:fadeIn 1s ease;
+}
+
+/* ANIMATIONS */
+@keyframes fadeIn{
+ from{opacity:0;transform:translateY(20px);}
+ to{opacity:1;transform:translateY(0);}
+}
 
 /* SIDEBAR */
 .sidebar{
- width:250px;
+ width:240px;
  background:linear-gradient(#1e293b,#020617);
  padding:20px;
+ box-shadow:2px 0 10px rgba(0,0,0,0.5);
 }
 
 .sidebar button{
@@ -393,56 +406,122 @@ body{margin:0;display:flex;font-family:Segoe UI;background:#020617;color:white}
  padding:12px;
  margin:6px 0;
  border:none;
- border-radius:8px;
+ border-radius:10px;
  background:#6366f1;
  color:white;
  cursor:pointer;
+ transition:0.3s;
+}
+
+.sidebar button:hover{
+ background:#4f46e5;
+ transform:translateX(8px);
 }
 
 /* MAIN */
-.main{flex:1;padding:20px}
+.main{flex:1;padding:25px}
 
-/* CARDS */
-.cards{display:flex;gap:15px}
+/* KPI CARDS */
+.cards{
+ display:flex;
+ gap:15px;
+}
+
 .card{
  flex:1;
- background:rgba(255,255,255,0.08);
  padding:20px;
- border-radius:12px;
+ border-radius:16px;
+ background:rgba(255,255,255,0.08);
+ backdrop-filter:blur(12px);
+ box-shadow:0 5px 25px rgba(0,0,0,0.4);
  text-align:center;
+ transition:0.3s;
+}
+
+.card:hover{
+ transform:translateY(-5px) scale(1.05);
+}
+
+/* ICON STYLE */
+.icon{
+ font-size:28px;
+ margin-bottom:5px;
 }
 
 /* GRID */
-.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
+.grid{
+ display:grid;
+ grid-template-columns:2fr 1fr;
+ gap:20px;
+ margin-top:20px;
+}
 
-table{width:100%;border-collapse:collapse}
-td,th{padding:10px;border-bottom:1px solid #334155}
+.section{
+ background:rgba(255,255,255,0.05);
+ padding:20px;
+ border-radius:16px;
+ animation:fadeIn 1s ease;
+}
 
-.def{color:red}
+/* TABLE */
+table{
+ width:100%;
+ border-collapse:collapse;
+ margin-top:10px;
+}
+
+th{
+ color:#94a3b8;
+ text-align:left;
+ padding:10px;
+}
+
+td{
+ padding:10px;
+ border-bottom:1px solid #334155;
+}
+
+tr:hover{
+ background:rgba(255,255,255,0.05);
+}
+
+.def{color:#ef4444;font-weight:bold}
 .ok{color:#22c55e}
 
-select{padding:8px;margin:5px}
+/* FILTER */
+select{
+ padding:8px;
+ margin:6px;
+ border-radius:6px;
+}
+
+/* CHART */
+canvas{
+ background:#020617;
+ border-radius:12px;
+ padding:10px;
+}
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<h2>📊 Dashboard</h2>
+<h2>📊 Smart Panel</h2>
 
-<button onclick="view='subject';load()">Subject</button>
-<button onclick="view='class';load()">Class</button>
-<button onclick="view='hod';load()">HOD</button>
+<button onclick="setView('subject')">📘 Subject</button>
+<button onclick="setView('class')">👩‍🏫 Class</button>
+<button onclick="setView('hod')">🏫 HOD</button>
 
 <hr>
 
 <select id="class">
-<option value="">All</option>
+<option value="">All Class</option>
 <option>SE</option><option>TE</option><option>BE</option>
 </select>
 
 <select id="batch">
-<option value="">All</option>
+<option value="">All Batch</option>
 <option>SE-1</option><option>SE-2</option><option>SE-3</option>
 <option>TE-1</option><option>TE-2</option><option>TE-3</option>
 <option>BE-1</option><option>BE-2</option><option>BE-3</option>
@@ -454,32 +533,42 @@ select{padding:8px;margin:5px}
 <option value="month">Monthly</option>
 </select>
 
-<button onclick="load()">Apply</button>
-<button onclick="exportData()">Export</button>
-<button onclick="window.location='/rejected'">Rejected</button>
+<button onclick="load()">Apply Filter</button>
+<button onclick="exportData()">⬇ Export</button>
 
 </div>
 
 <div class="main">
 
 <div class="cards">
-<div class="card">Lectures<br><h2 id="lec"></h2></div>
-<div class="card">Students<br><h2 id="stu"></h2></div>
-<div class="card">Defaulters<br><h2 id="def"></h2></div>
+ <div class="card">
+  <div class="icon">📚</div>
+  Lectures<br><h2 id="lec"></h2>
+ </div>
+
+ <div class="card">
+  <div class="icon">👨‍🎓</div>
+  Students<br><h2 id="stu"></h2>
+ </div>
+
+ <div class="card">
+  <div class="icon">⚠️</div>
+  Defaulters<br><h2 id="def"></h2>
+ </div>
 </div>
 
 <div class="grid">
-<canvas id="bar"></canvas>
-<canvas id="pie"></canvas>
+ <div class="section"><canvas id="bar"></canvas></div>
+ <div class="section"><canvas id="pie"></canvas></div>
 </div>
 
-<div style="margin-top:20px">
-<canvas id="line"></canvas>
+<div class="section">
+ <canvas id="line"></canvas>
 </div>
 
-<div style="margin-top:20px">
+<div class="section">
 <table>
-<tr><th>Name</th><th>%</th><th>Status</th></tr>
+<thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
 <tbody id="table"></tbody>
 </table>
 </div>
@@ -490,8 +579,9 @@ select{padding:8px;margin:5px}
 let view="subject";
 let barChart,pieChart,lineChart;
 
-async function load(){
+function setView(v){view=v;load();}
 
+async function load(){
  let url="/api/dashboard?";
  url+="classFilter="+class.value+"&batchFilter="+batch.value+"&period="+period.value;
 
@@ -517,13 +607,13 @@ async function load(){
  }
 
  if(barChart) barChart.destroy();
- barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
+ barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values,backgroundColor:"#6366f1"}]}});
 
  if(pieChart) pieChart.destroy();
  pieChart=new Chart(pie,{type:"doughnut",data:{labels:labels,datasets:[{data:values}]}});
 
  if(lineChart) lineChart.destroy();
- lineChart=new Chart(line,{type:"line",data:{labels:labels,datasets:[{data:values}]}});
+ lineChart=new Chart(line,{type:"line",data:{labels:labels,datasets:[{data:values,borderColor:"#22c55e"}]}});
 
  let t=document.getElementById("table");
  t.innerHTML="";
