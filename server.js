@@ -103,11 +103,10 @@ function getActiveSlot(day,time,identity){
    ROUTES
 ========================= */
 app.get("/",(req,res)=>res.send("RFID Running"));
-
 app.get("/dashboard",(req,res)=>res.redirect("/home"));
 
 /* =========================
-   LOG
+   LOG (UNCHANGED)
 ========================= */
 app.get("/log",(req,res)=>{
  const card=req.query.card_no;
@@ -140,9 +139,9 @@ app.get("/log",(req,res)=>{
 app.get("/download",(req,res)=>res.download(csvPath));
 
 /* =========================
-   ADVANCED API
+   ADVANCED ANALYTICS API
 ========================= */
-app.get("/api/data",(req,res)=>{
+app.get("/api/dashboard",(req,res)=>{
 
  const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
@@ -168,8 +167,6 @@ app.get("/api/data",(req,res)=>{
  });
 
  let actualLectures=Object.keys(lectureMap).length;
-
- // EXPECTED FROM TIMETABLE
  let expectedLectures=timetable.length;
 
  let studentData={};
@@ -177,8 +174,7 @@ app.get("/api/data",(req,res)=>{
   let percent=(studentWise[n]/actualLectures)*100;
   studentData[n]={
     percent:percent.toFixed(1),
-    def:percent<75,
-    shortage:percent<75
+    def:percent<75
   };
  });
 
@@ -192,32 +188,49 @@ app.get("/api/data",(req,res)=>{
 });
 
 /* =========================
-   HOME
+   HOME (FULL DASHBOARD)
 ========================= */
 app.get("/home",(req,res)=>{
 res.send(`
+<!DOCTYPE html>
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{background:#020617;color:white;font-family:Segoe UI;padding:20px}
+.cards{display:flex;gap:15px}
+.card{flex:1;padding:20px;background:#1e293b;border-radius:12px;text-align:center}
+.section{margin-top:20px;background:#1e293b;padding:20px;border-radius:12px}
+</style>
 </head>
 
-<body style="background:#020617;color:white;font-family:Segoe UI">
+<body>
 
-<h1>📊 Smart Attendance Dashboard</h1>
+<h1>📊 Smart Attendance System</h1>
 
-<div>
-Lectures: <span id="lec"></span> |
-Expected: <span id="exp"></span>
+<div class="cards">
+<div class="card">Actual Lectures <h2 id="a"></h2></div>
+<div class="card">Expected Lectures <h2 id="e"></h2></div>
+<div class="card">Defaulters <h2 id="d"></h2></div>
 </div>
 
+<div class="section">
 <canvas id="bar"></canvas>
+</div>
+
+<div class="section">
+<button onclick="go('/subject')">Subject</button>
+<button onclick="go('/class')">Class</button>
+<button onclick="go('/hod')">HOD</button>
+</div>
 
 <script>
-async function load(){
- let d=await fetch("/api/data").then(r=>r.json());
+function go(x){location=x}
 
- lec.innerText=d.actualLectures;
- exp.innerText=d.expectedLectures;
+fetch("/api/dashboard").then(r=>r.json()).then(d=>{
+ a.innerText=d.actualLectures;
+ e.innerText=d.expectedLectures;
+ d.innerText=Object.values(d.studentData).filter(x=>x.def).length;
 
  new Chart(bar,{
   type:"bar",
@@ -226,8 +239,7 @@ async function load(){
    datasets:[{data:Object.values(d.classWise)}]
   }
  });
-}
-load();
+});
 </script>
 
 </body>
@@ -236,39 +248,52 @@ load();
 });
 
 /* =========================
-   VIEW
+   VIEW TEMPLATE
 ========================= */
-function viewPage(title){
+function view(title,mode){
 return `
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{background:#020617;color:white;font-family:Segoe UI;padding:20px}
+.section{margin-top:20px;background:#1e293b;padding:20px;border-radius:10px}
+</style>
 </head>
 
-<body style="background:#020617;color:white;font-family:Segoe UI">
+<body>
 
 <h2>${title}</h2>
 
-<canvas id="bar"></canvas>
+<div class="section">
+<canvas id="c"></canvas>
+</div>
 
+<div class="section">
 <table border="1">
 <tr><th>Name</th><th>%</th><th>Status</th></tr>
-<tbody id="table"></tbody>
+<tbody id="t"></tbody>
 </table>
+</div>
 
 <script>
-async function load(){
- let d=await fetch("/api/data").then(r=>r.json());
+fetch("/api/dashboard").then(r=>r.json()).then(d=>{
 
- new Chart(bar,{
+ let labels,values;
+
+ if("${mode}"==="hod"){
+  labels=Object.keys(d.classWise);
+  values=Object.values(d.classWise);
+ }else{
+  labels=Object.keys(d.subjectWise);
+  values=Object.values(d.subjectWise);
+ }
+
+ new Chart(c,{
   type:"bar",
-  data:{
-   labels:Object.keys(d.subjectWise),
-   datasets:[{data:Object.values(d.subjectWise)}]
-  }
+  data:{labels,datasets:[{data:values}]}
  });
 
- let t=document.getElementById("table");
  Object.entries(d.studentData).forEach(([n,v])=>{
   t.innerHTML+=\`
   <tr>
@@ -277,8 +302,7 @@ async function load(){
   <td>\${v.def?'⚠ Defaulter':'OK'}</td>
   </tr>\`;
  });
-}
-load();
+});
 </script>
 
 </body>
@@ -286,8 +310,11 @@ load();
 `;
 }
 
-app.get("/subject",(req,res)=>res.send(viewPage("Subject")));
-app.get("/class",(req,res)=>res.send(viewPage("Class")));
-app.get("/hod",(req,res)=>res.send(viewPage("HOD")));
+app.get("/subject",(req,res)=>res.send(view("Subject Teacher","subject")));
+app.get("/class",(req,res)=>res.send(view("Class Teacher","class")));
+app.get("/hod",(req,res)=>res.send(view("HOD","hod")));
 
+/* =========================
+   START
+========================= */
 app.listen(PORT,()=>console.log("🚀 Server running"));
