@@ -104,6 +104,9 @@ function getActiveSlot(day,time,identity){
 ========================= */
 
 app.get("/",(req,res)=>res.send("RFID Running"));
+app.get("/dashboard",(req,res)=>{
+  res.redirect("/home");
+});
 
 /* =========================
    LOG (UNCHANGED)
