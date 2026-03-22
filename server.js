@@ -258,5 +258,268 @@ app.get("/download/today", (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+/* =========================================================
+   🔐 LOGIN SYSTEM
+========================================================= */
+app.get("/login", (req, res) => {
+res.send(`
+<html>
+<head>
+<style>
+body{font-family:Segoe UI;background:#0f172a;color:white;text-align:center;padding-top:100px}
+input,select{padding:10px;margin:10px}
+button{padding:10px;background:#6366f1;color:white;border:none;border-radius:6px}
+</style>
+</head>
+<body>
+
+<h2>🔐 Login Panel</h2>
+
+<select id="role">
+<option value="subject">Subject Teacher</option>
+<option value="class">Class Teacher</option>
+<option value="hod">HOD</option>
+</select><br>
+
+<input id="pass" type="password" placeholder="Enter Password"><br>
+
+<button onclick="login()">Login</button>
+
+<script>
+function login(){
+ if(document.getElementById("pass").value==="1234"){
+  window.location="/dashboard?view="+document.getElementById("role").value;
+ } else {
+  alert("Wrong Password");
+ }
+}
+</script>
+
+</body>
+</html>
+`);
+});
+
+
+/* =========================================================
+   📊 ADVANCED DASHBOARD API
+========================================================= */
+app.get("/api/dashboard", (req, res) => {
+
+  const data = fs.readFileSync(csvPath, "utf8");
+  const lines = data.trim().split("\\n").slice(1);
+
+  let records = lines.map(l=>{
+    const [date,time,role,name,card,className,batch,subject]=l.split(",");
+    return {date,name,className,batch,subject};
+  }).filter(x=>x.name);
+
+  const {classFilter,batchFilter,period}=req.query;
+
+  if(classFilter) records=records.filter(r=>r.className===classFilter);
+  if(batchFilter) records=records.filter(r=>r.batch===batchFilter);
+
+  let now=new Date();
+
+  if(period==="week"){
+    let d=new Date(); d.setDate(now.getDate()-7);
+    records=records.filter(r=>new Date(r.date)>=d);
+  }
+  if(period==="month"){
+    let d=new Date(); d.setMonth(now.getMonth()-1);
+    records=records.filter(r=>new Date(r.date)>=d);
+  }
+
+  let student={},subjectWise={},classWise={};
+
+  records.forEach(r=>{
+    student[r.name]=(student[r.name]||0)+1;
+    subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
+    classWise[r.className]=(classWise[r.className]||0)+1;
+  });
+
+  let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+
+  let studentData={};
+  Object.keys(student).forEach(n=>{
+    let p=(student[n]/totalLectures)*100;
+    studentData[n]={
+      count:student[n],
+      percent:p.toFixed(1),
+      def:p<75
+    };
+  });
+
+  res.json({
+    totalLectures,
+    studentData,
+    subjectWise,
+    classWise
+  });
+});
+
+
+/* =========================================================
+   🚫 REJECTED PAGE
+========================================================= */
+app.get("/rejected",(req,res)=>{
+res.send("<h1 style='text-align:center'>🚫 Rejected Scans</h1>");
+});
+
+
+/* =========================================================
+   🎨 FINAL POWER BI DASHBOARD
+========================================================= */
+app.get("/dashboard",(req,res)=>{
+
+res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{margin:0;display:flex;font-family:Segoe UI;background:#020617;color:white}
+
+/* SIDEBAR */
+.sidebar{
+ width:250px;
+ background:linear-gradient(#1e293b,#020617);
+ padding:20px;
+}
+
+.sidebar button{
+ width:100%;
+ padding:12px;
+ margin:6px 0;
+ border:none;
+ border-radius:8px;
+ background:#6366f1;
+ color:white;
+ cursor:pointer;
+}
+
+/* MAIN */
+.main{flex:1;padding:20px}
+
+/* CARDS */
+.cards{display:flex;gap:15px}
+.card{
+ flex:1;
+ background:rgba(255,255,255,0.08);
+ padding:20px;
+ border-radius:12px;
+ text-align:center;
+}
+
+/* GRID */
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
+
+table{width:100%;border-collapse:collapse}
+td,th{padding:10px;border-bottom:1px solid #334155}
+
+.def{color:red}
+.ok{color:#22c55e}
+
+select{padding:8px;margin:5px}
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+<h2>📊 Dashboard</h2>
+
+<button onclick="view='subject';load()">Subject</button>
+<button onclick="view='class';load()">Class</button>
+<button onclick="view='hod';load()">HOD</button>
+
+<hr>
+
+<select id="class">
+<option value="">All</option>
+<option>SE</option><option>TE</option><option>BE</option>
+</select>
+
+<select id="batch">
+<option value="">All</option>
+<option>SE-1</option><option>SE-2</option><option>SE-3</option>
+<option>TE-1</option><option>TE-2</option><option>TE-3</option>
+<option>BE-1</option><option>BE-2</option><option>BE-3</option>
+</select>
+
+<select id="period">
+<option value="">All Time</option>
+<option value="week">Weekly</option>
+<option value="month">Monthly</option>
+</select>
+
+<button onclick="load()">Apply</button>
+<button onclick="exportData()">Export</button>
+<button onclick="window.location='/rejected'">Rejected</button>
+
+</div>
+
+<div class="main">
+
+<div class="cards">
+<div class="card">Lectures<br><h2 id="lec"></h2></div>
+<div class="card">Students<br><h2 id="stu"></h2></div>
+<div class="card">Defaulters<br><h2 id="def"></h2></div>
+</div>
+
+<div class="grid">
+<canvas id="bar"></canvas>
+<canvas id="pie"></canvas>
+</div>
+
+<div style="margin-top:20px">
+<canvas id="line"></canvas>
+</div>
+
+<div style="margin-top:20px">
+<table>
+<tr><th>Name</th><th>%</th><th>Status</th></tr>
+<tbody id="table"></tbody>
+</table>
+</div>
+
+</div>
+
+<script>
+let view="subject";
+let barChart,pieChart,lineChart;
+
+async function load(){
+
+ let url="/api/dashboard?";
+ url+="classFilter="+class.value+"&batchFilter="+batch.value+"&period="+period.value;
+
+ let d=await fetch(url).then(r=>r.json());
+
+ lec.innerText=d.totalLectures;
+ stu.innerText=Object.keys(d.studentData).length;
+ def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+
+ let labels,values;
+
+ if(view==="subject"){
+  labels=Object.keys(d.subjectWise);
+  values=Object.values(d.subjectWise);
+ }
+ else if(view==="class"){
+  labels=Object.keys(d.subjectWise);
+  values=Object.values(d.subjectWise);
+ }
+ else{
+  labels=Object.keys(d.classWise);
+  values=Object.values(d.classWise);
+ }
+
+ if(barChart) barChart.destroy();
+ barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
+
+ if(pieChart) pieChart.destroy();
+ pieChart=new Chart(pie,{type:"doughnut",data:{labels:labels,datasets
 
 
