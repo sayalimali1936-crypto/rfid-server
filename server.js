@@ -102,8 +102,51 @@ function getActiveSlot(day,time,identity){
 /* =========================
    ROUTES
 ========================= */
-app.get("/",(req,res)=>res.send("RFID Running"));
-app.get("/dashboard",(req,res)=>res.redirect("/home"));
+app.get("/",(req,res)=>res.redirect("/login"));
+
+/* =========================
+   LOGIN
+========================= */
+app.get("/login",(req,res)=>{
+res.send(`
+<html>
+<head>
+<style>
+body{background:#020617;color:white;font-family:Segoe UI;text-align:center;padding-top:100px}
+input,select,button{padding:10px;margin:10px;border-radius:8px}
+button{background:#6366f1;color:white;border:none}
+</style>
+</head>
+<body>
+
+<h1>🔐 Login</h1>
+
+<select id="role">
+<option value="teacher">Teacher</option>
+<option value="hod">HOD</option>
+</select><br>
+
+<input id="id" placeholder="Enter Staff ID"><br>
+
+<button onclick="login()">Login</button>
+
+<script>
+function login(){
+ let role=document.getElementById("role").value;
+ let id=document.getElementById("id").value;
+
+ if(role==="teacher"){
+  location="/dashboard?role=teacher&staff="+id;
+ }else{
+  location="/dashboard?role=hod";
+ }
+}
+</script>
+
+</body>
+</html>
+`);
+});
 
 /* =========================
    LOG (UNCHANGED)
@@ -134,14 +177,11 @@ app.get("/log",(req,res)=>{
 });
 
 /* =========================
-   DOWNLOAD
-========================= */
-app.get("/download",(req,res)=>res.download(csvPath));
-
-/* =========================
-   ADVANCED ANALYTICS API
+   API (SMART)
 ========================= */
 app.get("/api/dashboard",(req,res)=>{
+
+ const {staff} = req.query;
 
  const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
@@ -151,11 +191,21 @@ app.get("/api/dashboard",(req,res)=>{
 
   return {
     date:p[0],
+    role:p[2],
     name:p[3],
     className:p[5],
     subject:p[7]
   };
- }).filter(x=>x && x.name);
+ }).filter(x=>x && x.role==="STUDENT");
+
+ // teacher filter
+ if(staff){
+  let subjects=timetable
+   .filter(t=>normalize(t.staff_id)===normalize(staff))
+   .map(t=>t.subject);
+
+  records=records.filter(r=>subjects.includes(r.subject));
+ }
 
  let lectureMap={},studentWise={},subjectWise={},classWise={};
 
@@ -171,148 +221,140 @@ app.get("/api/dashboard",(req,res)=>{
 
  let studentData={};
  Object.keys(studentWise).forEach(n=>{
-  let percent=(studentWise[n]/actualLectures)*100;
-  studentData[n]={
-    percent:percent.toFixed(1),
-    def:percent<75
-  };
+  let p=(studentWise[n]/actualLectures)*100;
+  studentData[n]={percent:p.toFixed(1),def:p<75};
  });
 
- res.json({
-  actualLectures,
-  expectedLectures,
-  studentData,
-  subjectWise,
-  classWise
- });
+ res.json({actualLectures,expectedLectures,studentData,subjectWise,classWise});
 });
 
 /* =========================
-   HOME (FULL DASHBOARD)
+   POWER BI DASHBOARD UI
 ========================= */
-app.get("/home",(req,res)=>{
+app.get("/dashboard",(req,res)=>{
 res.send(`
 <!DOCTYPE html>
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body{background:#020617;color:white;font-family:Segoe UI;padding:20px}
+body{margin:0;font-family:Segoe UI;display:flex;background:#020617;color:white}
+
+/* SIDEBAR */
+.sidebar{
+ width:230px;
+ background:#020617;
+ padding:20px;
+ border-right:1px solid #334155;
+}
+.sidebar button{
+ width:100%;
+ padding:12px;
+ margin:6px 0;
+ border:none;
+ border-radius:10px;
+ background:#1e293b;
+ color:white;
+ cursor:pointer;
+}
+.sidebar button:hover{background:#6366f1}
+
+/* MAIN */
+.main{flex:1;padding:20px}
+
+/* CARDS */
 .cards{display:flex;gap:15px}
-.card{flex:1;padding:20px;background:#1e293b;border-radius:12px;text-align:center}
-.section{margin-top:20px;background:#1e293b;padding:20px;border-radius:12px}
+.card{
+ flex:1;
+ padding:20px;
+ border-radius:12px;
+ background:rgba(255,255,255,0.08);
+ text-align:center;
+ transition:0.3s;
+}
+.card:hover{transform:scale(1.05)}
+
+/* GRID */
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
+
+.section{background:#1e293b;padding:20px;border-radius:12px}
+
+/* TABLE */
+table{width:100%;border-collapse:collapse}
+td,th{padding:10px;border-bottom:1px solid #334155}
+.def{color:red}
+.ok{color:lime}
 </style>
 </head>
 
 <body>
 
-<h1>📊 Smart Attendance System</h1>
+<div class="sidebar">
+<h2>📊 Dashboard</h2>
+<button onclick="location='/dashboard'">Home</button>
+<button onclick="location='/login'">Logout</button>
+</div>
+
+<div class="main">
 
 <div class="cards">
-<div class="card">Actual Lectures <h2 id="a"></h2></div>
-<div class="card">Expected Lectures <h2 id="e"></h2></div>
-<div class="card">Defaulters <h2 id="d"></h2></div>
+<div class="card">Lectures <h2 id="lec"></h2></div>
+<div class="card">Expected <h2 id="exp"></h2></div>
+<div class="card">Defaulters <h2 id="def"></h2></div>
 </div>
 
-<div class="section">
-<canvas id="bar"></canvas>
+<div class="grid">
+<div class="section"><canvas id="bar"></canvas></div>
+<div class="section"><canvas id="pie"></canvas></div>
 </div>
 
+<div class="section"><canvas id="line"></canvas></div>
+
 <div class="section">
-<button onclick="go('/subject')">Subject</button>
-<button onclick="go('/class')">Class</button>
-<button onclick="go('/hod')">HOD</button>
+<table>
+<tr><th>Name</th><th>%</th><th>Status</th></tr>
+<tbody id="t"></tbody>
+</table>
+</div>
+
 </div>
 
 <script>
-function go(x){location=x}
+async function load(){
 
-fetch("/api/dashboard").then(r=>r.json()).then(d=>{
- a.innerText=d.actualLectures;
- e.innerText=d.expectedLectures;
- d.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+ let d=await fetch("/api/dashboard"+location.search).then(r=>r.json());
 
- new Chart(bar,{
-  type:"bar",
-  data:{
-   labels:Object.keys(d.classWise),
-   datasets:[{data:Object.values(d.classWise)}]
-  }
+ lec.innerText=d.actualLectures;
+ exp.innerText=d.expectedLectures;
+ def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+
+ let labels=Object.keys(d.subjectWise);
+ let values=Object.values(d.subjectWise);
+
+ new Chart(bar,{type:"bar",data:{labels,datasets:[{data:values}]}});
+
+ new Chart(pie,{type:"doughnut",data:{labels,datasets:[{data:values}]}});
+
+ new Chart(line,{type:"line",data:{labels,datasets:[{data:values}]}});
+
+ let t=document.getElementById("t");
+ t.innerHTML="";
+ Object.entries(d.studentData).forEach(([n,v])=>{
+  t.innerHTML+=\`
+  <tr>
+    <td>\${n}</td>
+    <td>\${v.percent}%</td>
+    <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
+  </tr>\`;
  });
-});
+}
+load();
 </script>
 
 </body>
 </html>
 `);
 });
-
-/* =========================
-   VIEW TEMPLATE
-========================= */
-function view(title,mode){
-return `
-<html>
-<head>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-body{background:#020617;color:white;font-family:Segoe UI;padding:20px}
-.section{margin-top:20px;background:#1e293b;padding:20px;border-radius:10px}
-</style>
-</head>
-
-<body>
-
-<h2>${title}</h2>
-
-<div class="section">
-<canvas id="c"></canvas>
-</div>
-
-<div class="section">
-<table border="1">
-<tr><th>Name</th><th>%</th><th>Status</th></tr>
-<tbody id="t"></tbody>
-</table>
-</div>
-
-<script>
-fetch("/api/dashboard").then(r=>r.json()).then(d=>{
-
- let labels,values;
-
- if("${mode}"==="hod"){
-  labels=Object.keys(d.classWise);
-  values=Object.values(d.classWise);
- }else{
-  labels=Object.keys(d.subjectWise);
-  values=Object.values(d.subjectWise);
- }
-
- new Chart(c,{
-  type:"bar",
-  data:{labels,datasets:[{data:values}]}
- });
-
- Object.entries(d.studentData).forEach(([n,v])=>{
-  t.innerHTML+=\`
-  <tr>
-  <td>\${n}</td>
-  <td>\${v.percent}%</td>
-  <td>\${v.def?'⚠ Defaulter':'OK'}</td>
-  </tr>\`;
- });
-});
-</script>
-
-</body>
-</html>
-`;
-}
-
-app.get("/subject",(req,res)=>res.send(view("Subject Teacher","subject")));
-app.get("/class",(req,res)=>res.send(view("Class Teacher","class")));
-app.get("/hod",(req,res)=>res.send(view("HOD","hod")));
 
 /* =========================
    START
