@@ -265,4 +265,76 @@ async function load(){
  stu.innerText=Object.keys(d.studentData).length;
  def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
  let labels,values;
- if("${mode}"==="subject"){labels=Object.keys
+ if("${mode}"==="
+<script>
+let barChart,pieChart,lineChart;
+function go(x){window.location=x}
+async function load(){
+ let d=await fetch("/api/data").then(r=>r.json());
+ lec.innerText=d.totalLectures;
+ stu.innerText=Object.keys(d.studentData).length;
+ def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+
+ let labels,values;
+ if("${mode}"==="subject"){
+   labels=Object.keys(d.subjectWise);
+   values=Object.values(d.subjectWise);
+ }
+ else if("${mode}"==="class"){
+   labels=Object.keys(d.studentData);
+   values=Object.values(d.studentData).map(x=>x.count);
+ }
+ else{ // HOD
+   labels=Object.keys(d.classWise);
+   values=Object.values(d.classWise);
+ }
+
+ if(barChart) barChart.destroy();
+ barChart=new Chart(document.getElementById("bar"),{
+   type:"bar",
+   data:{labels:labels,datasets:[{data:values,backgroundColor:"#6366f1"}]}
+ });
+
+ if(pieChart) pieChart.destroy();
+ pieChart=new Chart(document.getElementById("pie"),{
+   type:"doughnut",
+   data:{labels:labels,datasets:[{data:values}]}
+ });
+
+ if(lineChart) lineChart.destroy();
+ lineChart=new Chart(document.getElementById("line"),{
+   type:"line",
+   data:{labels:labels,datasets:[{data:values,borderColor:"#22c55e"}]}
+ });
+
+ let t=document.getElementById("table");
+ t.innerHTML="";
+ Object.entries(d.studentData).forEach(([n,v])=>{
+   t.innerHTML+=`
+   <tr>
+     <td>${n}</td>
+     <td>${v.percent}%</td>
+     <td class="${v.def?'def':'ok'}">${v.def?'Defaulter':'OK'}</td>
+   </tr>`;
+ });
+}
+function exportData(){ window.location="/download"; }
+load();
+setInterval(load,5000);
+</script>
+</body>
+</html>
+`;
+}
+
+/* =========================
+   VIEWS
+========================= */
+app.get("/subject",(req,res)=>res.send(viewPage("Subject Teacher Dashboard","subject")));
+app.get("/class",(req,res)=>res.send(viewPage("Class Teacher Dashboard","class")));
+app.get("/hod",(req,res)=>res.send(viewPage("HOD Dashboard","hod")));
+
+/* =========================
+   START
+========================= */
+app.listen(PORT,()=>console.log("🚀 Server running on port "+PORT));
