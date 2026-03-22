@@ -264,16 +264,6 @@ async function load(){
  lec.innerText=d.totalLectures;
  stu.innerText=Object.keys(d.studentData).length;
  def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
- let labels,values;
- if("${mode}"==="
-<script>
-let barChart,pieChart,lineChart;
-function go(x){window.location=x}
-async function load(){
- let d=await fetch("/api/data").then(r=>r.json());
- lec.innerText=d.totalLectures;
- stu.innerText=Object.keys(d.studentData).length;
- def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
 
  let labels,values;
  if("${mode}"==="subject"){
@@ -310,12 +300,12 @@ async function load(){
  let t=document.getElementById("table");
  t.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
-   t.innerHTML+=`
+   t.innerHTML+=\`
    <tr>
-     <td>${n}</td>
-     <td>${v.percent}%</td>
-     <td class="${v.def?'def':'ok'}">${v.def?'Defaulter':'OK'}</td>
-   </tr>`;
+     <td>\${n}</td>
+     <td>\${v.percent}%</td>
+     <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
+   </tr>\`;
  });
 }
 function exportData(){ window.location="/download"; }
