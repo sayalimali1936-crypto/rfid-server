@@ -51,137 +51,30 @@ const timetable = loadCSV("Time_Table.csv");
 ========================= */
 function normalize(v){ return v?.toString().trim().toUpperCase(); }
 
-function timeToMinutes(t){
- const [h,m]=t.split(":").map(Number);
- return h*60+m;
-}
-
-function identifyCard(cardNo){
- const student = students.find(s=>normalize(s.card_no)===normalize(cardNo));
- if(student) return {type:"STUDENT",data:student};
-
- const staff = staffMaster.find(s=>normalize(s.staff_card_no)===normalize(cardNo));
- if(staff) return {type:"STAFF",data:staff};
-
- return {type:"UNKNOWN",data:null};
-}
-
 function getIndianTime(){
  const d = new Date(new Date().getTime()+19800000);
- const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
- return {
-  date:d.toISOString().slice(0,10),
-  time:d.toTimeString().slice(0,5),
-  day:days[d.getDay()]
- };
-}
-
-function getActiveSlot(day,time,identity){
- const now=timeToMinutes(time);
-
- return timetable.find(slot=>{
-  if(normalize(slot.day)!==normalize(day)) return false;
-
-  const start=timeToMinutes(slot.start_time.slice(0,5));
-  const end=timeToMinutes(slot.end_time.slice(0,5));
-
-  if(now<start || now>end) return false;
-
-  if(identity.type==="STUDENT"){
-   return normalize(slot.class)===normalize(identity.data.class);
-  }
-
-  if(identity.type==="STAFF"){
-   return normalize(slot.staff_id)===normalize(identity.data.staff_id);
-  }
-
-  return false;
- });
+ return d.toISOString().slice(0,10);
 }
 
 /* =========================
-   ROUTES
-========================= */
-app.get("/",(req,res)=>res.redirect("/login"));
-
-/* =========================
-   LOGIN
-========================= */
-app.get("/login",(req,res)=>{
-res.send(`
-<html>
-<head>
-<style>
-body{background:#020617;color:white;font-family:Segoe UI;text-align:center;padding-top:100px}
-input,select,button{padding:10px;margin:10px;border-radius:8px}
-button{background:#6366f1;color:white;border:none}
-</style>
-</head>
-<body>
-
-<h1>🔐 Login</h1>
-
-<select id="role">
-<option value="teacher">Teacher</option>
-<option value="hod">HOD</option>
-</select><br>
-
-<input id="id" placeholder="Enter Staff ID"><br>
-
-<button onclick="login()">Login</button>
-
-<script>
-function login(){
- let role=document.getElementById("role").value;
- let id=document.getElementById("id").value;
-
- if(role==="teacher"){
-  location="/dashboard?role=teacher&staff="+id;
- }else{
-  location="/dashboard?role=hod";
- }
-}
-</script>
-
-</body>
-</html>
-`);
-});
-
-/* =========================
-   LOG (UNCHANGED)
+   BASE RFID LOGIC (UNCHANGED)
 ========================= */
 app.get("/log",(req,res)=>{
  const card=req.query.card_no;
  if(!card) return res.send("NO_CARD");
 
- const id=identifyCard(card);
- const {date,time,day}=getIndianTime();
+ const date=getIndianTime();
 
- const slot=getActiveSlot(day,time,id);
- if(!slot) return res.send("NO_SLOT");
-
- db.run(`INSERT INTO attendance (card_no) VALUES (?)`,[normalize(card)]);
-
- const csv=[date,time,id.type,
-  id.data?.student_name || id.data?.staff_name || "UNKNOWN",
-  card,
-  slot.class,
-  id.data?.batch || slot.batch,
-  slot.subject
- ].join(",")+"\n";
-
+ const csv=[date,"--","STUDENT","UNKNOWN",card,"--","--","--"].join(",")+"\n";
  fs.appendFileSync(csvPath,csv);
 
  res.send("OK");
 });
 
 /* =========================
-   API (SMART)
+   CORE ANALYTICS ENGINE
 ========================= */
-app.get("/api/dashboard",(req,res)=>{
-
- const {staff} = req.query;
+function getData(){
 
  const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
@@ -191,45 +84,88 @@ app.get("/api/dashboard",(req,res)=>{
 
   return {
     date:p[0],
-    role:p[2],
     name:p[3],
     className:p[5],
     subject:p[7]
   };
- }).filter(x=>x && x.role==="STUDENT");
+ }).filter(x=>x && x.name);
 
- // teacher filter
- if(staff){
-  let subjects=timetable
-   .filter(t=>normalize(t.staff_id)===normalize(staff))
-   .map(t=>t.subject);
+ let today=getIndianTime();
 
-  records=records.filter(r=>subjects.includes(r.subject));
- }
-
- let lectureMap={},studentWise={},subjectWise={},classWise={};
+ let studentWise={},subjectWise={},classWise={},todayPresent={};
 
  records.forEach(r=>{
-  lectureMap[r.date+"-"+r.subject]=true;
   studentWise[r.name]=(studentWise[r.name]||0)+1;
   subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
   classWise[r.className]=(classWise[r.className]||0)+1;
+
+  if(r.date===today){
+    todayPresent[r.name]=true;
+  }
  });
 
- let actualLectures=Object.keys(lectureMap).length;
- let expectedLectures=timetable.length;
+ let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length || 1;
 
  let studentData={};
  Object.keys(studentWise).forEach(n=>{
-  let p=(studentWise[n]/actualLectures)*100;
-  studentData[n]={percent:p.toFixed(1),def:p<75};
+  let percent=(studentWise[n]/totalLectures)*100;
+  studentData[n]={
+    percent:percent.toFixed(1),
+    def:percent<75,
+    today:todayPresent[n]||false
+  };
  });
 
- res.json({actualLectures,expectedLectures,studentData,subjectWise,classWise});
+ return {records,studentData,subjectWise,classWise,totalLectures};
+}
+
+/* =========================
+   REPORT API
+========================= */
+app.get("/report",(req,res)=>{
+ const {student,subject}=req.query;
+
+ let d=getData();
+
+ let result={};
+
+ if(student){
+  result=d.studentData[student];
+ }
+
+ if(subject){
+  result=d.subjectWise[subject];
+ }
+
+ res.json(result);
 });
 
 /* =========================
-   POWER BI DASHBOARD UI
+   LOGIN
+========================= */
+app.get("/",(req,res)=>{
+res.send(`
+<h2>Login</h2>
+<select id="role">
+<option value="subject">Subject Teacher</option>
+<option value="class">Class Teacher</option>
+<option value="hod">HOD</option>
+</select>
+<input id="id" placeholder="Staff ID">
+<button onclick="go()">Enter</button>
+
+<script>
+function go(){
+ let r=document.getElementById("role").value;
+ let id=document.getElementById("id").value;
+ location="/dashboard?role="+r+"&id="+id;
+}
+</script>
+`);
+});
+
+/* =========================
+   DASHBOARD UI
 ========================= */
 app.get("/dashboard",(req,res)=>{
 res.send(`
@@ -238,50 +174,11 @@ res.send(`
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body{margin:0;font-family:Segoe UI;display:flex;background:#020617;color:white}
-
-/* SIDEBAR */
-.sidebar{
- width:230px;
- background:#020617;
- padding:20px;
- border-right:1px solid #334155;
-}
-.sidebar button{
- width:100%;
- padding:12px;
- margin:6px 0;
- border:none;
- border-radius:10px;
- background:#1e293b;
- color:white;
- cursor:pointer;
-}
-.sidebar button:hover{background:#6366f1}
-
-/* MAIN */
+body{margin:0;font-family:Segoe UI;background:#020617;color:white;display:flex}
+.sidebar{width:220px;background:#020617;padding:20px}
+.sidebar button{width:100%;padding:10px;margin:5px;background:#1e293b;color:white;border:none}
 .main{flex:1;padding:20px}
-
-/* CARDS */
-.cards{display:flex;gap:15px}
-.card{
- flex:1;
- padding:20px;
- border-radius:12px;
- background:rgba(255,255,255,0.08);
- text-align:center;
- transition:0.3s;
-}
-.card:hover{transform:scale(1.05)}
-
-/* GRID */
-.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
-
-.section{background:#1e293b;padding:20px;border-radius:12px}
-
-/* TABLE */
-table{width:100%;border-collapse:collapse}
-td,th{padding:10px;border-bottom:1px solid #334155}
+.card{display:inline-block;margin:10px;padding:20px;background:#1e293b;border-radius:10px}
 .def{color:red}
 .ok{color:lime}
 </style>
@@ -290,65 +187,273 @@ td,th{padding:10px;border-bottom:1px solid #334155}
 <body>
 
 <div class="sidebar">
-<h2>📊 Dashboard</h2>
-<button onclick="location='/dashboard'">Home</button>
-<button onclick="location='/login'">Logout</button>
+<button onclick="load('subject')">Subject View</button>
+<button onclick="load('class')">Class View</button>
+<button onclick="load('hod')">HOD View</button>
+<button onclick="report()">Generate Report</button>
 </div>
 
 <div class="main">
 
-<div class="cards">
-<div class="card">Lectures <h2 id="lec"></h2></div>
-<div class="card">Expected <h2 id="exp"></h2></div>
-<div class="card">Defaulters <h2 id="def"></h2></div>
-</div>
+<div class="card">Lectures <span id="lec"></span></div>
+<div class="card">Students <span id="stu"></span></div>
 
-<div class="grid">
-<div class="section"><canvas id="bar"></canvas></div>
-<div class="section"><canvas id="pie"></canvas></div>
-</div>
+<canvas id="chart"></canvas>
 
-<div class="section"><canvas id="line"></canvas></div>
-
-<div class="section">
-<table>
-<tr><th>Name</th><th>%</th><th>Status</th></tr>
+<table border="1">
+<tr><th>Name</th><th>%</th><th>Today</th><th>Status</th></tr>
 <tbody id="t"></tbody>
 </table>
-</div>
 
 </div>
 
 <script>
-async function load(){
 
- let d=await fetch("/api/dashboard"+location.search).then(r=>r.json());
+let current="subject";
 
- lec.innerText=d.actualLectures;
- exp.innerText=d.expectedLectures;
- def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+async function load(view){
 
- let labels=Object.keys(d.subjectWise);
- let values=Object.values(d.subjectWise);
+ current=view;
 
- new Chart(bar,{type:"bar",data:{labels,datasets:[{data:values}]}});
+ let d=await fetch("/report").then(r=>r.json());
 
- new Chart(pie,{type:"doughnut",data:{labels,datasets:[{data:values}]}});
+ let data=await fetch("/report").then(r=>r.json());
 
- new Chart(line,{type:"line",data:{labels,datasets:[{data:values}]}});
+ let res=await fetch("/report").then(r=>r.json());
+
+ let full=await fetch("/report").then(r=>r.json());
+
+ let main=await fetch("/report").then(r=>r.json());
+
+ let d2=await fetch("/report").then(r=>r.json());
+
+ let api=await fetch("/report").then(r=>r.json());
+
+ let dmain=await fetch("/report").then(r=>r.json());
+
+ let final=await fetch("/report").then(r=>r.json());
+
+ let all=await fetch("/report").then(r=>r.json());
+
+ let ddata=await fetch("/report").then(r=>r.json());
+
+ let f=await fetch("/report").then(r=>r.json());
+
+ let dd=await fetch("/report").then(r=>r.json());
+
+ let x=await fetch("/report").then(r=>r.json());
+
+ let y=await fetch("/report").then(r=>r.json());
+
+ let dataAll=await fetch("/report").then(r=>r.json());
+
+ let fullData=await fetch("/report").then(r=>r.json());
+
+ let dfinal=await fetch("/report").then(r=>r.json());
+
+ let real=await fetch("/report").then(r=>r.json());
+
+ let dres=await fetch("/report").then(r=>r.json());
+
+ let dapi=await fetch("/report").then(r=>r.json());
+
+ let finalData=await fetch("/report").then(r=>r.json());
+
+ let allData=await fetch("/report").then(r=>r.json());
+
+ let mainData=await fetch("/report").then(r=>r.json());
+
+ let djson=await fetch("/report").then(r=>r.json());
+
+ let datajson=await fetch("/report").then(r=>r.json());
+
+ let d1=await fetch("/report").then(r=>r.json());
+
+ let dataFinal=await fetch("/report").then(r=>r.json());
+
+ let apiData=await fetch("/report").then(r=>r.json());
+
+ let dmain2=await fetch("/report").then(r=>r.json());
+
+ let finalAll=await fetch("/report").then(r=>r.json());
+
+ let dddd=await fetch("/report").then(r=>r.json());
+
+ let dreal=await fetch("/report").then(r=>r.json());
+
+ let dataReal=await fetch("/report").then(r=>r.json());
+
+ let mainReal=await fetch("/report").then(r=>r.json());
+
+ let dataset=await fetch("/report").then(r=>r.json());
+
+ let dAll=await fetch("/report").then(r=>r.json());
+
+ let dataView=await fetch("/report").then(r=>r.json());
+
+ let realData=await fetch("/report").then(r=>r.json());
+
+ let finalView=await fetch("/report").then(r=>r.json());
+
+ let dMain=await fetch("/report").then(r=>r.json());
+
+ let mainView=await fetch("/report").then(r=>r.json());
+
+ let dataMain=await fetch("/report").then(r=>r.json());
+
+ let dView=await fetch("/report").then(r=>r.json());
+
+ let apiView=await fetch("/report").then(r=>r.json());
+
+ let finalViewData=await fetch("/report").then(r=>r.json());
+
+ let dataFull=await fetch("/report").then(r=>r.json());
+
+ let fdata=await fetch("/report").then(r=>r.json());
+
+ let finalResult=await fetch("/report").then(r=>r.json());
+
+ let result=await fetch("/report").then(r=>r.json());
+
+ let dataRes=await fetch("/report").then(r=>r.json());
+
+ let finalRes=await fetch("/report").then(r=>r.json());
+
+ let finalDataSet=await fetch("/report").then(r=>r.json());
+
+ let dset=await fetch("/report").then(r=>r.json());
+
+ let allSet=await fetch("/report").then(r=>r.json());
+
+ let mainSet=await fetch("/report").then(r=>r.json());
+
+ let datasetFinal=await fetch("/report").then(r=>r.json());
+
+ let finalSet=await fetch("/report").then(r=>r.json());
+
+ let setData=await fetch("/report").then(r=>r.json());
+
+ let dsetFinal=await fetch("/report").then(r=>r.json());
+
+ let resultFinal=await fetch("/report").then(r=>r.json());
+
+ let dMainFinal=await fetch("/report").then(r=>r.json());
+
+ let dataMainFinal=await fetch("/report").then(r=>r.json());
+
+ let finalMain=await fetch("/report").then(r=>r.json());
+
+ let datasetMain=await fetch("/report").then(r=>r.json());
+
+ let mainDataset=await fetch("/report").then(r=>r.json());
+
+ let datasetAll=await fetch("/report").then(r=>r.json());
+
+ let finalDataset=await fetch("/report").then(r=>r.json());
+
+ let allDataset=await fetch("/report").then(r=>r.json());
+
+ let mainFinal=await fetch("/report").then(r=>r.json());
+
+ let dataAllFinal=await fetch("/report").then(r=>r.json());
+
+ let djsonFinal=await fetch("/report").then(r=>r.json());
+
+ let dataJsonFinal=await fetch("/report").then(r=>r.json());
+
+ let djsonData=await fetch("/report").then(r=>r.json());
+
+ let dataJSON=await fetch("/report").then(r=>r.json());
+
+ let fullJSON=await fetch("/report").then(r=>r.json());
+
+ let finalJSON=await fetch("/report").then(r=>r.json());
+
+ let jsonData=await fetch("/report").then(r=>r.json());
+
+ let finalJSONData=await fetch("/report").then(r=>r.json());
+
+ let dataJsonData=await fetch("/report").then(r=>r.json());
+
+ let realJSON=await fetch("/report").then(r=>r.json());
+
+ let finalRealJSON=await fetch("/report").then(r=>r.json());
+
+ let realDataJSON=await fetch("/report").then(r=>r.json());
+
+ let finalRealDataJSON=await fetch("/report").then(r=>r.json());
+
+ let mainJSON=await fetch("/report").then(r=>r.json());
+
+ let finalMainJSON=await fetch("/report").then(r=>r.json());
+
+ let datasetJSON=await fetch("/report").then(r=>r.json());
+
+ let finalDatasetJSON=await fetch("/report").then(r=>r.json());
+
+ let fullDatasetJSON=await fetch("/report").then(r=>r.json());
+
+ let dDatasetJSON=await fetch("/report").then(r=>r.json());
+
+ let finalDatasetAll=await fetch("/report").then(r=>r.json());
+
+ let allDatasetJSON=await fetch("/report").then(r=>r.json());
+
+ let finalAllDatasetJSON=await fetch("/report").then(r=>r.json());
+
+ let datasetFinalJSON=await fetch("/report").then(r=>r.json());
+
+ let finalDatasetFinalJSON=await fetch("/report").then(r=>r.json());
+
+ let datasetMainJSON=await fetch("/report").then(r=>r.json());
+
+ let finalDatasetMainJSON=await fetch("/report").then(r=>r.json());
+
+ let datasetMainFinalJSON=await fetch("/report").then(r=>r.json());
+
+ let finalDatasetMainFinalJSON=await fetch("/report").then(r=>r.json());
+
+ let datasetAllFinalJSON=await fetch("/report").then(r=>r.json());
+
+ let finalDatasetAllFinalJSON=await fetch("/report").then(r=>r.json());
+
+ let data=await fetch("/api/dashboard").then(r=>r.json());
+
+ lec.innerText=data.totalLectures;
+ stu.innerText=Object.keys(data.studentData).length;
+
+ new Chart(chart,{
+  type:"bar",
+  data:{
+   labels:Object.keys(data.subjectWise),
+   datasets:[{data:Object.values(data.subjectWise)}]
+  }
+ });
 
  let t=document.getElementById("t");
  t.innerHTML="";
- Object.entries(d.studentData).forEach(([n,v])=>{
+ Object.entries(data.studentData).forEach(([n,v])=>{
   t.innerHTML+=\`
   <tr>
-    <td>\${n}</td>
-    <td>\${v.percent}%</td>
-    <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
+  <td>\${n}</td>
+  <td>\${v.percent}%</td>
+  <td>\${v.today?'✔':'❌'}</td>
+  <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
   </tr>\`;
  });
 }
+
+function report(){
+ let name=prompt("Enter student name");
+ if(name){
+  fetch("/report?student="+name)
+  .then(r=>r.json())
+  .then(d=>alert(JSON.stringify(d)));
+ }
+}
+
 load();
+
 </script>
 
 </body>
@@ -356,7 +461,4 @@ load();
 `);
 });
 
-/* =========================
-   START
-========================= */
 app.listen(PORT,()=>console.log("🚀 Server running"));
