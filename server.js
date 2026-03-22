@@ -52,13 +52,23 @@ function getData(){
   return {studentData:{},subject:{},classWise:{},totalLectures:0};
  }
 }
+/* =========================
+   ROUTES
+========================= */
+app.get("/home",(req,res)=>{
+  res.redirect("/");
+});
+app.get("/home",(req,res)=>{
+  res.redirect("/");
+});
+
+app.get("/dashboard",(req,res)=>{
+  res.redirect("/");
+});
 
 /* ================= API ================= */
 app.get("/api",(req,res)=>{
  res.json(getData());
-});
-app.get("/dashboard",(req,res)=>{
-  res.redirect("/home");
 });
 
 /* ================= LOG ================= */
