@@ -260,7 +260,6 @@ th,td{padding:10px;border-bottom:1px solid #334155;}
 
 <div class="grid">
 <div class="section"><canvas id="bar"></canvas></div>
-<div class="section"><canvas id="pie"></canvas
 <div class="section"><canvas id="pie"></canvas></div>
 </div>
 <div class="section"><canvas id="line"></canvas></div>
@@ -272,6 +271,11 @@ th,td{padding:10px;border-bottom:1px solid #334155;}
 </table>
 </div>
 
+<div class="section">
+<h3>Generate Report</h3>
+<div id="reportControls"></div>
+</div>
+
 </div>
 <script>
 let barChart,pieChart,lineChart;
@@ -280,26 +284,64 @@ function go(x){window.location=x}
 function renderFilters(){
  let f=document.getElementById("filters");
  if("${mode}"==="subject"){
-   f.innerHTML=`
+   f.innerHTML=\`
    <h3>Filter by Subject</h3>
    <select id="subjectFilter"><option value="">All</option></select>
-   <button onclick="load()">Apply</button>`;
+   <button onclick="load()">Apply</button>\`;
  }
  else if("${mode}"==="class"){
-   f.innerHTML=`
+   f.innerHTML=\`
    <h3>Filters</h3>
    <select id="subjectFilter"><option value="">All Subjects</option></select>
    <select id="batchFilter"><option value="">All Batches</option><option>A</option><option>B</option><option>C</option></select>
    <input id="studentSearch" placeholder="Search Student">
-   <button onclick="load()">Apply</button>`;
+   <button onclick="load()">Apply</button>\`;
  }
  else{ // HOD
-   f.innerHTML=`
+   f.innerHTML=\`
    <h3>Filter by Class/Batch</h3>
    <select id="classFilter"><option value="">All Classes</option><option>SE</option><option>TE</option><option>BE</option></select>
    <select id="batchFilter"><option value="">All Batches</option><option>A</option><option>B</option><option>C</option></select>
-   <button onclick="load()">Apply</button>`;
+   <button onclick="load()">Apply</button>\`;
  }
+}
+
+function renderReportControls(){
+ let rc=document.getElementById("reportControls");
+ if("${mode}"==="subject"){
+   rc.innerHTML=\`
+   <input id="reportSubject" placeholder="Enter Subject">
+   <button onclick="genReport('subject')">Generate Subject Report</button>\`;
+ }
+ else if("${mode}"==="class"){
+   rc.innerHTML=\`
+   <input id="reportStudent" placeholder="Enter Student Name">
+   <input id="reportSubject" placeholder="Enter Subject">
+   <button onclick="genReport('student')">Generate Student Report</button>
+   <button onclick="genReport('subject')">Generate Subject Report</button>\`;
+ }
+ else{ // HOD
+   rc.innerHTML=\`
+   <input id="reportClass" placeholder="Enter Class">
+   <button onclick="genReport('class')">Generate Class Report</button>\`;
+ }
+}
+
+function genReport(type){
+ let url="/report?";
+ if(type==="student"){
+   let s=document.getElementById("reportStudent").value;
+   if(s) url+="student="+encodeURIComponent(s);
+ }
+ if(type==="subject"){
+   let subj=document.getElementById("reportSubject").value;
+   if(subj) url+="subject="+encodeURIComponent(subj);
+ }
+ if(type==="class"){
+   let cls=document.getElementById("reportClass").value;
+   if(cls) url+="class="+encodeURIComponent(cls);
+ }
+ window.open(url,"_blank");
 }
 
 async function load(){
@@ -363,16 +405,17 @@ async function load(){
  let t=document.getElementById("table");
  t.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
-   t.innerHTML+=`
+   t.innerHTML+=\`
    <tr>
-     <td>${n}</td>
-     <td>${v.percent}%</td>
-     <td class="${v.def?'def':'ok'}">${v.def?'Defaulter':'OK'}</td>
-   </tr>`;
+     <td>\${n}</td>
+     <td>\${v.percent}%</td>
+     <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
+   </tr>\`;
  });
 }
 function exportData(){ window.location="/download"; }
 renderFilters();
+renderReportControls();
 load();
 setInterval(load,5000);
 </script>
@@ -380,3 +423,138 @@ setInterval(load,5000);
 </html>
 `;
 }
+/* =========================
+   REPORT GENERATION
+========================= */
+app.get("/report",(req,res)=>{
+ const {student,subject} = req.query;
+
+ const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
+
+ let records=data.map(l=>{
+  let p=l.split(",");
+  if(p.length<8) return null;
+  return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
+ }).filter(x=>x && x.name);
+
+ // Filter by student or subject
+ if(student) records=records.filter(r=>r.name===student);
+ if(subject) records=records.filter(r=>r.subject===subject);
+
+ if(records.length===0){
+   return res.send(`<h2>No records found for ${student||subject}</h2>`);
+ }
+
+ // Aggregate stats
+ let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+ let presentCount=records.length;
+ let percent=((presentCount/totalLectures)*100).toFixed(1);
+
+ // Defaulter check
+ let defaulter=percent<75;
+
+ // Build HTML report
+ let html=`
+ <h1>📑 Report</h1>
+ <p><b>Student:</b> ${student||"All"}</p>
+ <p><b>Subject:</b> ${subject||"All"}</p>
+ <p><b>Total Lectures:</b> ${totalLectures}</p>
+ <p><b>Present Count:</b> ${presentCount}</p>
+ <p><b>Attendance %:</b> ${percent}%</p>
+ <p><b>Status:</b> ${defaulter?"❌ Defaulter":"✅ OK"}</p>
+ <hr>
+ <h3>Detailed Records</h3>
+ <table border="1" cellpadding="6">
+ <tr><th>Date</th><th>Name</th><th>Class</th><th>Batch</th><th>Subject</th></tr>
+ ${records.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.className}</td><td>${r.batch}</td><td>${r.subject}</td></tr>`).join("")}
+ </table>
+ `;
+
+ res.send(html);
+});
+/* =========================
+   REPORT GENERATION + EXPORT
+========================= */
+const { jsPDF } = require("jspdf"); // install with: npm install jspdf
+const { Parser } = require("json2csv"); // install with: npm install json2csv
+
+app.get("/report",(req,res)=>{
+ const {student,subject,format} = req.query;
+
+ const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
+
+ let records=data.map(l=>{
+  let p=l.split(",");
+  if(p.length<8) return null;
+  return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
+ }).filter(x=>x && x.name);
+
+ // Apply filters
+ if(student) records=records.filter(r=>r.name===student);
+ if(subject) records=records.filter(r=>r.subject===subject);
+
+ if(records.length===0){
+   return res.send(`<h2>No records found for ${student||subject}</h2>`);
+ }
+
+ // Aggregate stats
+ let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+ let presentCount=records.length;
+ let percent=((presentCount/totalLectures)*100).toFixed(1);
+ let defaulter=percent<75;
+
+ // Export as CSV
+ if(format==="csv"){
+   const parser = new Parser();
+   const csv = parser.parse(records);
+   res.header("Content-Type","text/csv");
+   res.attachment(`${student||subject||"report"}.csv`);
+   return res.send(csv);
+ }
+
+ // Export as PDF
+ if(format==="pdf"){
+   const doc = new jsPDF();
+   doc.setFontSize(14);
+   doc.text("Attendance Report", 20, 20);
+   doc.text(`Student: ${student||"All"}`, 20, 30);
+   doc.text(`Subject: ${subject||"All"}`, 20, 40);
+   doc.text(`Total Lectures: ${totalLectures}`, 20, 50);
+   doc.text(`Present Count: ${presentCount}`, 20, 60);
+   doc.text(`Attendance %: ${percent}%`, 20, 70);
+   doc.text(`Status: ${defaulter?"Defaulter":"OK"}`, 20, 80);
+
+   let y=100;
+   records.forEach(r=>{
+     doc.text(`${r.date} | ${r.name} | ${r.className} | ${r.batch} | ${r.subject}`, 20, y);
+     y+=10;
+   });
+
+   const pdfBuffer = doc.output("arraybuffer");
+   res.header("Content-Type","application/pdf");
+   res.attachment(`${student||subject||"report"}.pdf`);
+   return res.send(Buffer.from(pdfBuffer));
+ }
+
+ // Default: HTML view
+ let html=`
+ <h1>📑 Report</h1>
+ <p><b>Student:</b> ${student||"All"}</p>
+ <p><b>Subject:</b> ${subject||"All"}</p>
+ <p><b>Total Lectures:</b> ${totalLectures}</p>
+ <p><b>Present Count:</b> ${presentCount}</p>
+ <p><b>Attendance %:</b> ${percent}%</p>
+ <p><b>Status:</b> ${defaulter?"❌ Defaulter":"✅ OK"}</p>
+ <hr>
+ <h3>Detailed Records</h3>
+ <table border="1" cellpadding="6">
+ <tr><th>Date</th><th>Name</th><th>Class</th><th>Batch</th><th>Subject</th></tr>
+ ${records.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.className}</td><td>${r.batch}</td><td>${r.subject}</td></tr>`).join("")}
+ </table>
+ <hr>
+ <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}format=pdf">⬇ Download PDF</a><br>
+ <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}format=csv">⬇ Download CSV</a>
+ `;
+
+ res.send(html);
+});
