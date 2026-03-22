@@ -102,8 +102,8 @@ function getActiveSlot(day,time,identity){
 /* =========================
    ROUTES
 ========================= */
-
 app.get("/",(req,res)=>res.send("RFID Running"));
+
 app.get("/dashboard",(req,res)=>{
   res.redirect("/home");
 });
@@ -146,8 +146,9 @@ app.get("/download",(req,res)=>res.download(csvPath));
 ========================= */
 app.get("/home",(req,res)=>{
 res.send(`
-<h1 style="text-align:center">📊 Dashboard</h1>
+<h1 style="text-align:center">📊 Smart Dashboard</h1>
 <div style="text-align:center">
+<button onclick="go('/login')">Login</button>
 <button onclick="go('/subject')">Subject</button>
 <button onclick="go('/class')">Class</button>
 <button onclick="go('/hod')">HOD</button>
@@ -160,38 +161,108 @@ function go(x){location=x}
 });
 
 /* =========================
-   API
+   LOGIN
+========================= */
+app.get("/login",(req,res)=>{
+res.send(`
+<h2 style="text-align:center">🔐 Login</h2>
+<div style="text-align:center">
+<input id="id" placeholder="Staff ID"><br><br>
+<select id="role">
+<option value="teacher">Teacher</option>
+<option value="hod">HOD</option>
+</select><br><br>
+<button onclick="login()">Login</button>
+</div>
+
+<script>
+function login(){
+ let id=document.getElementById("id").value;
+ let role=document.getElementById("role").value;
+
+ if(role==="teacher"){
+  location="/subject?staff="+id;
+ }else{
+  location="/hod";
+ }
+}
+</script>
+`);
+});
+
+/* =========================
+   SMART API
 ========================= */
 app.get("/api/data",(req,res)=>{
+
+ const {className,batch,subject,period,staff} = req.query;
+
  const data=fs.readFileSync(csvPath,"utf8").split(/\\r?\\n/).slice(1);
 
  let records=data.map(l=>{
   let p=l.split(",");
   if(p.length<8) return null;
-  return {date:p[0],name:p[3],className:p[5],subject:p[7]};
- }).filter(x=>x && x.name);
 
- let student={},subjectWise={},classWise={};
+  return {
+    date:p[0],
+    role:p[2],
+    name:p[3],
+    className:p[5],
+    batch:p[6],
+    subject:p[7]
+  };
+ }).filter(x=>x && x.role==="STUDENT");
+
+ /* AUTO TEACHER SUBJECT */
+ if(staff){
+  let teacherSubjects = timetable
+   .filter(t=>normalize(t.staff_id)===normalize(staff))
+   .map(t=>t.subject);
+
+  if(teacherSubjects.length>0){
+   records = records.filter(r=>teacherSubjects.includes(r.subject));
+  }
+ }
+
+ if(className) records=records.filter(r=>r.className===className);
+ if(batch) records=records.filter(r=>r.batch===batch);
+ if(subject) records=records.filter(r=>r.subject===subject);
+
+ let now=new Date();
+
+ if(period==="week"){
+  let d=new Date(); d.setDate(now.getDate()-7);
+  records=records.filter(r=>new Date(r.date)>=d);
+ }
+
+ if(period==="month"){
+  let d=new Date(); d.setMonth(now.getMonth()-1);
+  records=records.filter(r=>new Date(r.date)>=d);
+ }
+
+ let subjectWise={},classWise={},studentWise={},lectureMap={};
 
  records.forEach(r=>{
-  student[r.name]=(student[r.name]||0)+1;
   subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
   classWise[r.className]=(classWise[r.className]||0)+1;
+  studentWise[r.name]=(studentWise[r.name]||0)+1;
+
+  lectureMap[r.date+"-"+r.subject]=true;
  });
 
- let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+ let totalLectures=Object.keys(lectureMap).length || 1;
 
  let studentData={};
- Object.keys(student).forEach(n=>{
-  let p=(student[n]/totalLectures)*100;
-  studentData[n]={count:student[n],percent:p.toFixed(1),def:p<75};
+ Object.keys(studentWise).forEach(n=>{
+  let p=(studentWise[n]/totalLectures)*100;
+  studentData[n]={count:studentWise[n],percent:p.toFixed(1),def:p<75};
  });
 
- res.json({totalLectures,studentData,subjectWise,classWise});
+ res.json({totalLectures,subjectWise,classWise,studentData});
 });
 
 /* =========================
-   VIEW GENERATOR
+   DASHBOARD UI
 ========================= */
 function viewPage(title,mode){
 return `
@@ -199,275 +270,61 @@ return `
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-body{
- margin:0;
- font-family:'Segoe UI';
- display:flex;
- background:linear-gradient(135deg,#020617,#0f172a);
- color:white;
- animation:fadeIn 0.8s ease;
-}
-
-@keyframes fadeIn{
- from{opacity:0;transform:translateY(10px)}
- to{opacity:1;transform:translateY(0)}
-}
-
-/* SIDEBAR */
-.sidebar{
- width:230px;
- background:linear-gradient(#1e293b,#020617);
- padding:20px;
- box-shadow:2px 0 15px rgba(0,0,0,0.5);
-}
-
-.sidebar h2{
- text-align:center;
- margin-bottom:20px;
-}
-
-.sidebar button{
- width:100%;
- padding:12px;
- margin:6px 0;
- border:none;
- border-radius:10px;
- background:#6366f1;
- color:white;
- cursor:pointer;
- transition:0.3s;
-}
-
-.sidebar button:hover{
- background:#4f46e5;
- transform:translateX(6px);
-}
-
-/* MAIN */
-.main{
- flex:1;
- padding:20px;
-}
-
-/* KPI CARDS */
-.cards{
- display:flex;
- gap:15px;
-}
-
-.card{
- flex:1;
- padding:20px;
- border-radius:16px;
- background:rgba(255,255,255,0.08);
- backdrop-filter:blur(12px);
- text-align:center;
- transition:0.3s;
- box-shadow:0 5px 20px rgba(0,0,0,0.4);
-}
-
-.card:hover{
- transform:translateY(-5px) scale(1.05);
-}
-
-.icon{
- font-size:24px;
- margin-bottom:5px;
-}
-
-/* GRID */
-.grid{
- display:grid;
- grid-template-columns:2fr 1fr;
- gap:20px;
- margin-top:20px;
-}
-
-.section{
- background:rgba(255,255,255,0.05);
- padding:20px;
- border-radius:16px;
-}
-
-/* FILTER PANEL */
-.filters{
- width:220px;
- background:#020617;
- padding:15px;
- border-left:1px solid #334155;
-}
-
-select{
- width:100%;
- padding:8px;
- margin:8px 0;
- border-radius:6px;
-}
-
-/* TABLE */
-table{
- width:100%;
- border-collapse:collapse;
- margin-top:10px;
-}
-
-th,td{
- padding:10px;
- border-bottom:1px solid #334155;
-}
-
-.def{color:#ef4444}
-.ok{color:#22c55e}
+body{margin:0;font-family:Segoe UI;background:#0f172a;color:white;display:flex}
+.sidebar{width:220px;background:#1e293b;padding:20px}
+.sidebar button{width:100%;margin:5px;padding:10px;background:#6366f1;border:none;color:white}
+.main{flex:1;padding:20px}
+.card{display:inline-block;margin:10px;padding:20px;background:#111827;border-radius:10px}
 </style>
 </head>
 
 <body>
 
-<!-- SIDEBAR -->
 <div class="sidebar">
-<h2>📊 Dashboard</h2>
-
-<button onclick="go('/home')">🏠 Home</button>
-<button onclick="go('/subject')">📘 Subject</button>
-<button onclick="go('/class')">👩‍🏫 Class</button>
-<button onclick="go('/hod')">🏫 HOD</button>
-
-<hr>
-
-<button onclick="exportData()">⬇ Export</button>
+<button onclick="go('/home')">Home</button>
+<button onclick="go('/subject')">Subject</button>
+<button onclick="go('/class')">Class</button>
+<button onclick="go('/hod')">HOD</button>
 </div>
 
-<!-- MAIN -->
 <div class="main">
 
-<h2>${title}</h2>
+<div class="card">Lectures <span id="lec"></span></div>
+<div class="card">Students <span id="stu"></span></div>
+<div class="card">Defaulters <span id="def"></span></div>
 
-<div class="cards">
-<div class="card">
-<div class="icon">📚</div>
-Lectures<br><h2 id="lec"></h2>
-</div>
+<canvas id="bar"></canvas>
 
-<div class="card">
-<div class="icon">👨‍🎓</div>
-Students<br><h2 id="stu"></h2>
-</div>
+<table id="table"></table>
 
-<div class="card">
-<div class="icon">⚠️</div>
-Defaulters<br><h2 id="def"></h2>
-</div>
-</div>
-
-<div class="grid">
-<div class="section"><canvas id="bar"></canvas></div>
-<div class="section"><canvas id="pie"></canvas></div>
-</div>
-
-<div class="section" style="margin-top:20px">
-<canvas id="line"></canvas>
-</div>
-
-<div class="section">
-<table>
-<thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
-<tbody id="table"></tbody>
-</table>
-</div>
-
-</div>
-
-<!-- FILTER PANEL -->
-<div class="filters">
-<h3>Filters</h3>
-
-<select id="class">
-<option value="">All Class</option>
-<option>SE</option><option>TE</option><option>BE</option>
-</select>
-
-<select id="batch">
-<option value="">All Batch</option>
-<option>A</option><option>B</option><option>C</option>
-</select>
-
-<select id="period">
-<option value="">All Time</option>
-<option value="week">Weekly</option>
-<option value="month">Monthly</option>
-</select>
-
-<button onclick="load()">Apply</button>
 </div>
 
 <script>
-let barChart,pieChart,lineChart;
-
-function go(x){window.location=x}
+function go(x){location=x}
 
 async function load(){
-
- let url="/api/data";
-
- let d=await fetch(url).then(r=>r.json());
+ let d=await fetch("/api/data").then(r=>r.json());
 
  lec.innerText=d.totalLectures;
  stu.innerText=Object.keys(d.studentData).length;
  def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
 
- let labels,values;
+ let labels=Object.keys(d.subjectWise);
+ let values=Object.values(d.subjectWise);
 
- if("${mode}"==="subject"){
-  labels=Object.keys(d.subjectWise);
-  values=Object.values(d.subjectWise);
- }
- else if("${mode}"==="class"){
-  labels=Object.keys(d.studentData);
-  values=Object.values(d.studentData).map(x=>x.count);
- }
- else{
-  labels=Object.keys(d.classWise);
-  values=Object.values(d.classWise);
- }
-
- if(barChart) barChart.destroy();
- barChart=new Chart(document.getElementById("bar"),{
+ new Chart(document.getElementById("bar"),{
   type:"bar",
-  data:{labels:labels,datasets:[{data:values,backgroundColor:"#6366f1"}]}
- });
-
- if(pieChart) pieChart.destroy();
- pieChart=new Chart(document.getElementById("pie"),{
-  type:"doughnut",
-  data:{labels:labels,datasets:[{data:values}]}
- });
-
- if(lineChart) lineChart.destroy();
- lineChart=new Chart(document.getElementById("line"),{
-  type:"line",
-  data:{labels:labels,datasets:[{data:values,borderColor:"#22c55e"}]}
+  data:{labels,datasets:[{data:values}]}
  });
 
  let t=document.getElementById("table");
  t.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
-  t.innerHTML+=\`
-  <tr>
-    <td>\${n}</td>
-    <td>\${v.percent}%</td>
-    <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
-  </tr>\`;
+  t.innerHTML+=\`<tr><td>\${n}</td><td>\${v.percent}%</td></tr>\`;
  });
 }
-
-function exportData(){
- window.location="/download";
-}
-
 load();
-setInterval(load,5000);
 </script>
 
 </body>
@@ -475,12 +332,9 @@ setInterval(load,5000);
 `;
 }
 
-/* =========================
-   VIEWS
-========================= */
-app.get("/subject",(req,res)=>res.send(viewPage("Subject View","subject")));
-app.get("/class",(req,res)=>res.send(viewPage("Class View","class")));
-app.get("/hod",(req,res)=>res.send(viewPage("HOD View","hod")));
+app.get("/subject",(req,res)=>res.send(viewPage("Subject","subject")));
+app.get("/class",(req,res)=>res.send(viewPage("Class","class")));
+app.get("/hod",(req,res)=>res.send(viewPage("HOD","hod")));
 
 /* =========================
    START
