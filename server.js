@@ -52,6 +52,15 @@ function getData(){
   return {studentData:{},subject:{},classWise:{},totalLectures:0};
  }
 }
+/* =========================
+   ROUTES
+========================= */
+
+app.get("/",(req,res)=>res.send("RFID Running"));
+app.get("/dashboard",(req,res)=>{
+  res.redirect("/home");
+});
+
 
 /* ================= API ================= */
 app.get("/api",(req,res)=>{
