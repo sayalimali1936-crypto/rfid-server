@@ -8,7 +8,6 @@ const PORT = process.env.PORT || 10000;
 const csvPath = path.join(__dirname, "attendance.csv");
 const timetablePath = path.join(__dirname, "Time_Table.csv");
 const studentsPath = path.join(__dirname, "Students.csv");
-const staffPath = path.join(__dirname, "Staff_Master.csv");
 
 /* ================= LOAD CSV ================= */
 function loadCSV(file){
@@ -18,7 +17,7 @@ function loadCSV(file){
   const headers=lines.shift().split(",");
   return lines.map(l=>{
    let obj={};
-   l.split(",").forEach((v,i)=>obj[headers[i]] = v);
+   l.split(",").forEach((v,i)=>obj[headers[i]]=v);
    return obj;
   });
  }catch(e){ return []; }
@@ -26,7 +25,6 @@ function loadCSV(file){
 
 const students = loadCSV(studentsPath);
 const timetable = loadCSV(timetablePath);
-const staff = loadCSV(staffPath);
 
 /* ================= RFID LOG ================= */
 app.get("/log",(req,res)=>{
@@ -40,6 +38,7 @@ app.get("/log",(req,res)=>{
  const day=now.toLocaleString("en-US",{weekday:"long"});
 
  const slot=timetable.find(t=>t.day===day && t.class===student.class);
+
  if(!slot) return res.send("NO_SLOT");
 
  const csv=[
@@ -58,7 +57,7 @@ app.get("/log",(req,res)=>{
 });
 
 /* ================= DATA ================= */
-function getData(filters, staffId){
+function getData(filters){
 
  const raw=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
@@ -72,15 +71,6 @@ function getData(filters, staffId){
    subject:p[7]
   };
  }).filter(x=>x && x.name && x.name!=="UNKNOWN");
-
- /* 🔐 SUBJECT TEACHER RESTRICTION */
- if(staffId){
-  const teacherSubjects = timetable
-    .filter(t=>t.staff_id===staffId)
-    .map(t=>t.subject);
-
-  records = records.filter(r=>teacherSubjects.includes(r.subject));
- }
 
  /* APPLY FILTERS */
  if(filters.subject) records=records.filter(r=>r.subject===filters.subject);
@@ -111,15 +101,13 @@ function getData(filters, staffId){
 app.get("/api",(req,res)=>{
 
  const filters={
-  subject:req.query.subject || "",
-  className:req.query.className || "",
-  batch:req.query.batch || "",
-  student:req.query.student || ""
+  subject:req.query.subject||"",
+  className:req.query.className||"",
+  batch:req.query.batch||"",
+  student:req.query.student||""
  };
 
- const staffId=req.query.staff || "";
-
- const data=getData(filters,staffId);
+ const data=getData(filters);
 
  const subjects=[...new Set(timetable.map(t=>t.subject))];
  const classes=[...new Set(timetable.map(t=>t.class))];
@@ -128,37 +116,93 @@ app.get("/api",(req,res)=>{
  res.json({...data,subjects,classes,batches});
 });
 
-/* ================= LOGIN ================= */
-app.get("/",(req,res)=>{
-res.send(`
-<h2 style="text-align:center">Login</h2>
-<input id="id" placeholder="Enter Staff ID">
-<button onclick="go()">Login</button>
-
-<script>
-function go(){
- let id=document.getElementById("id").value;
- location="/subject?staff="+id;
-}
-</script>
-`);
-});
-
 /* ================= UI ================= */
 function page(title,mode){
 return `
+<!DOCTYPE html>
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;font-family:Segoe UI;background:#020617;color:white;display:flex}
-.sidebar{width:220px;padding:20px;background:#020617;border-right:1px solid #334155}
-.sidebar a{display:block;padding:10px;margin:5px;background:#1e293b;color:white;text-decoration:none;border-radius:6px}
-.sidebar a:hover{background:#6366f1}
-.main{flex:1;padding:20px}
-.cards{display:flex;gap:10px}
-.card{flex:1;background:#1e293b;padding:15px;border-radius:10px;text-align:center}
+body{
+ margin:0;
+ font-family:Segoe UI;
+ background:#020617;
+ color:white;
+ display:flex;
+}
+
+/* SIDEBAR */
+.sidebar{
+ width:220px;
+ padding:20px;
+ background:#020617;
+ border-right:1px solid #334155;
+}
+
+.sidebar a{
+ display:block;
+ padding:10px;
+ margin:5px;
+ border-radius:8px;
+ background:#1e293b;
+ color:white;
+ text-decoration:none;
+ transition:.3s;
+}
+.sidebar a:hover{
+ background:#6366f1;
+ transform:translateX(5px);
+}
+
+/* MAIN */
+.main{
+ flex:1;
+ padding:20px;
+ animation:fadeIn .5s ease;
+}
+
+@keyframes fadeIn{
+ from{opacity:0; transform:translateY(10px)}
+ to{opacity:1; transform:translateY(0)}
+}
+
+/* CARDS */
+.cards{
+ display:flex;
+ gap:15px;
+}
+
+.card{
+ flex:1;
+ padding:20px;
+ border-radius:12px;
+ background:linear-gradient(135deg,#6366f1,#22c55e);
+ text-align:center;
+ transition:.3s;
+}
+.card:hover{
+ transform:scale(1.05);
+}
+
+/* FILTERS */
+select,input{
+ padding:8px;
+ margin:5px;
+ border-radius:6px;
+}
+
+/* TABLE */
+table{
+ width:100%;
+ margin-top:20px;
+ border-collapse:collapse;
+}
+td,th{
+ padding:10px;
+ border-bottom:1px solid #334155;
+}
 </style>
 </head>
 
@@ -178,7 +222,6 @@ body{margin:0;font-family:Segoe UI;background:#020617;color:white;display:flex}
 <select id="className"></select>
 <select id="batch"></select>
 ${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
-
 <button onclick="load()">Apply</button>
 
 <div class="cards">
@@ -189,7 +232,7 @@ ${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
 
 <canvas id="bar"></canvas>
 
-<table border="1" width="100%">
+<table>
 <tr><th>Name</th><th>%</th><th>Status</th></tr>
 <tbody id="table"></tbody>
 </table>
@@ -199,23 +242,19 @@ ${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
 <script>
 
 let chart;
-const staff = new URLSearchParams(window.location.search).get("staff") || "";
 
 async function load(){
 
- let url="/api?staff="+staff+
- "&subject="+subject.value+
- "&className="+className.value+
- "&batch="+batch.value+
- "&student="+(student?student.value:"");
+ const subVal=subject.value;
+ const clsVal=className.value;
+ const batVal=batch.value;
+ const stuVal=student?student.value:"";
+
+ let url="/api?subject="+subVal+"&className="+clsVal+"&batch="+batVal+"&student="+stuVal;
 
  let d=await fetch(url).then(r=>r.json());
 
- /* Preserve values */
- let subVal=subject.value;
- let clsVal=className.value;
- let batVal=batch.value;
-
+ /* PRESERVE FILTERS */
  subject.innerHTML='<option value="">Subject</option>';
  d.subjects.forEach(s=>subject.innerHTML+=\`<option \${s===subVal?'selected':''}>\${s}</option>\`);
 
@@ -255,6 +294,7 @@ load();
 }
 
 /* ================= ROUTES ================= */
+app.get("/",(req,res)=>res.redirect("/subject"));
 app.get("/subject",(req,res)=>res.send(page("Subject Teacher View","subject")));
 app.get("/class",(req,res)=>res.send(page("Class Teacher View","class")));
 app.get("/hod",(req,res)=>res.send(page("HOD View","hod")));
