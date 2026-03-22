@@ -2,15 +2,13 @@ const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 const fs = require("fs");
-const { jsPDF } = require("jspdf");   // npm install jspdf
-const { Parser } = require("json2csv"); // npm install json2csv
+const { jsPDF } = require("jspdf");
+const { Parser } = require("json2csv");
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-/* =========================
-   DATABASE
-========================= */
+/* ================= DATABASE ================= */
 const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 
@@ -28,9 +26,7 @@ if (!fs.existsSync(csvPath)) {
   "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
 }
 
-/* =========================
-   LOAD CSV
-========================= */
+/* ================= LOAD CSV ================= */
 function loadCSV(file) {
  const data = fs.readFileSync(path.join(__dirname, file), "utf8");
  const lines = data.trim().split(/\r?\n/);
@@ -48,9 +44,7 @@ const students = loadCSV("Students.csv");
 const staffMaster = loadCSV("Staff_Master.csv");
 const timetable = loadCSV("Time_Table.csv");
 
-/* =========================
-   HELPERS
-========================= */
+/* ================= HELPERS ================= */
 function normalize(v){ return v?.toString().trim().toUpperCase(); }
 
 function timeToMinutes(t){
@@ -101,15 +95,7 @@ function getActiveSlot(day,time,identity){
  });
 }
 
-/* =========================
-   ROUTES
-========================= */
-app.get("/",(req,res)=>res.send("RFID Running"));
-app.get("/dashboard",(req,res)=>{ res.redirect("/home"); });
-
-/* =========================
-   LOG
-========================= */
+/* ================= RFID LOG ================= */
 app.get("/log",(req,res)=>{
  const card=req.query.card_no;
  if(!card) return res.send("NO_CARD");
@@ -135,47 +121,8 @@ app.get("/log",(req,res)=>{
  res.send("OK");
 });
 
-/* =========================
-   DOWNLOAD
-========================= */
-app.get("/download",(req,res)=>res.download(csvPath));
-
-/* =========================
-   HOME PAGE
-========================= */
-app.get("/home",(req,res)=>{
-res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-<title>Smart Attendance Dashboard</title>
-<style>
-body{font-family:'Segoe UI';background:#0f172a;color:white;text-align:center;margin:0;padding:0;}
-h1{margin-top:40px;}
-button{margin:10px;padding:12px 20px;border:none;border-radius:8px;background:#6366f1;color:white;cursor:pointer;transition:0.3s;}
-button:hover{background:#4f46e5;}
-</style>
-</head>
-<body>
-<h1>📊 Smart Attendance Dashboard</h1>
-<div>
-<button onclick="go('/subject')">📘 Subject Teacher</button>
-<button onclick="go('/class')">👩‍🏫 Class Teacher</button>
-<button onclick="go('/hod')">🏫 HOD</button>
-</div>
-<script>
-function go(x){location=x}
-</script>
-</body>
-</html>
-`);
-});
-
-/* =========================
-   API with Filters
-========================= */
+/* ================= API ================= */
 app.get("/api/data",(req,res)=>{
- const {subject,student,class:cls,batch} = req.query;
 
  const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
@@ -183,13 +130,7 @@ app.get("/api/data",(req,res)=>{
   let p=l.split(",");
   if(p.length<8) return null;
   return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
- }).filter(x=>x && x.name);
-
- // Apply filters
- if(subject) records=records.filter(r=>r.subject===subject);
- if(student) records=records.filter(r=>r.name===student);
- if(cls) records=records.filter(r=>r.className===cls);
- if(batch) records=records.filter(r=>r.batch===batch);
+ }).filter(x=>x && x.name && x.name!=="UNKNOWN");
 
  let student={},subjectWise={},classWise={};
 
@@ -199,138 +140,106 @@ app.get("/api/data",(req,res)=>{
   classWise[r.className]=(classWise[r.className]||0)+1;
  });
 
- let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+ let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length || 1;
 
  let studentData={};
  Object.keys(student).forEach(n=>{
   let p=(student[n]/totalLectures)*100;
-  studentData[n]={count:student[n],percent:p.toFixed(1),def:p<75};
+  studentData[n]={percent:p.toFixed(1),def:p<75};
  });
 
  res.json({totalLectures,studentData,subjectWise,classWise});
 });
 
-/* =========================
-   VIEW GENERATOR
-========================= */
+/* ================= UI ================= */
 function viewPage(title,mode){
 return `
 <!DOCTYPE html>
 <html>
 <head>
-<title>${title}</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-/* styles omitted for brevity — include the full CSS from earlier */
+body{background:#0f172a;color:white;font-family:Segoe UI;padding:20px}
+.cards{display:flex;gap:15px}
+.card{flex:1;background:#1e293b;padding:20px;border-radius:10px;text-align:center}
+table{width:100%;margin-top:20px;border-collapse:collapse}
+td,th{padding:10px;border-bottom:1px solid #334155}
+.def{color:red}
+.ok{color:lime}
 </style>
 </head>
+
 <body>
-<!-- sidebar, cards, filters, charts, table, report controls -->
-<!-- full HTML/JS from the corrected viewPage() we built earlier -->
+
+<h2>${title}</h2>
+
+<div class="cards">
+<div class="card">Lectures <h2 id="lec"></h2></div>
+<div class="card">Students <h2 id="stu"></h2></div>
+<div class="card">Defaulters <h2 id="def"></h2></div>
+</div>
+
+<canvas id="chart"></canvas>
+
+<table>
+<tr><th>Name</th><th>%</th><th>Status</th></tr>
+<tbody id="table"></tbody>
+</table>
+
+<script>
+
+async function load(){
+
+ let d=await fetch("/api/data").then(r=>r.json());
+
+ lec.innerText=d.totalLectures;
+ stu.innerText=Object.keys(d.studentData).length;
+ def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+
+ let labels = "${mode}"==="hod" ? Object.keys(d.classWise) : Object.keys(d.subjectWise);
+ let values = "${mode}"==="hod" ? Object.values(d.classWise) : Object.values(d.subjectWise);
+
+ new Chart(chart,{type:"bar",data:{labels,datasets:[{data:values}]}});
+
+ let t=document.getElementById("table");
+ t.innerHTML="";
+
+ Object.entries(d.studentData).forEach(([n,v])=>{
+  t.innerHTML+=\`
+  <tr>
+    <td>\${n}</td>
+    <td>\${v.percent}%</td>
+    <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
+  </tr>\`;
+ });
+}
+
+load();
+
+</script>
+
 </body>
 </html>
 `;
 }
 
-/* =========================
-   DASHBOARD ROUTES
-========================= */
-app.get("/subject",(req,res)=>res.send(viewPage("Subject Teacher Dashboard","subject")));
-app.get("/class",(req,res)=>res.send(viewPage("Class Teacher Dashboard","class")));
-app.get("/hod",(req,res)=>res.send(viewPage("HOD Dashboard","hod")));
-/* =========================
-   REPORT GENERATION + EXPORT
-========================= */
-const { jsPDF } = require("jspdf");   // install with: npm install jspdf
-const { Parser } = require("json2csv"); // install with: npm install json2csv
+/* ================= ROUTES ================= */
+app.get("/",(req,res)=>res.redirect("/home"));
 
-app.get("/report",(req,res)=>{
-  const {student,subject,class:cls,batch,format} = req.query;
-
-  const data = fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
-
-  let records = data.map(l=>{
-    let p = l.split(",");
-    if(p.length<8) return null;
-    return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
-  }).filter(x=>x && x.name);
-
-  // Apply filters
-  if(student) records = records.filter(r=>r.name===student);
-  if(subject) records = records.filter(r=>r.subject===subject);
-  if(cls) records = records.filter(r=>r.className===cls);
-  if(batch) records = records.filter(r=>r.batch===batch);
-
-  if(records.length===0){
-    return res.send(`<h2>No records found for ${student||subject||cls||batch}</h2>`);
-  }
-
-  // Aggregate stats
-  let totalLectures = [...new Set(records.map(r=>r.date+r.subject))].length;
-  let presentCount = records.length;
-  let percent = ((presentCount/totalLectures)*100).toFixed(1);
-  let defaulter = percent < 75;
-
-  // Export as CSV
-  if(format==="csv"){
-    const parser = new Parser();
-    const csv = parser.parse(records);
-    res.header("Content-Type","text/csv");
-    res.attachment(`${student||subject||cls||batch||"report"}.csv`);
-    return res.send(csv);
-  }
-
-  // Export as PDF
-  if(format==="pdf"){
-    const doc = new jsPDF();
-    doc.setFontSize(14);
-    doc.text("Attendance Report", 20, 20);
-    doc.text(`Student: ${student||"All"}`, 20, 30);
-    doc.text(`Subject: ${subject||"All"}`, 20, 40);
-    doc.text(`Class: ${cls||"All"}`, 20, 50);
-    doc.text(`Batch: ${batch||"All"}`, 20, 60);
-    doc.text(`Total Lectures: ${totalLectures}`, 20, 70);
-    doc.text(`Present Count: ${presentCount}`, 20, 80);
-    doc.text(`Attendance %: ${percent}%`, 20, 90);
-    doc.text(`Status: ${defaulter?"Defaulter":"OK"}`, 20, 100);
-
-    let y = 120;
-    records.forEach(r=>{
-      doc.text(`${r.date} | ${r.name} | ${r.className} | ${r.batch} | ${r.subject}`, 20, y);
-      y += 10;
-    });
-
-    const pdfBuffer = doc.output("arraybuffer");
-    res.header("Content-Type","application/pdf");
-    res.attachment(`${student||subject||cls||batch||"report"}.pdf`);
-    return res.send(Buffer.from(pdfBuffer));
-  }
-
-  // Default HTML view
-  let html = `
-  <h1>📑 Report</h1>
-  <p><b>Student:</b> ${student||"All"}</p>
-  <p><b>Subject:</b> ${subject||"All"}</p>
-  <p><b>Class:</b> ${cls||"All"}</p>
-  <p><b>Batch:</b> ${batch||"All"}</p>
-  <p><b>Total Lectures:</b> ${totalLectures}</p>
-  <p><b>Present Count:</b> ${presentCount}</p>
-  <p><b>Attendance %:</b> ${percent}%</p>
-  <p><b>Status:</b> ${defaulter?"❌ Defaulter":"✅ OK"}</p>
-  <hr>
-  <h3>Detailed Records</h3>
-  <table border="1" cellpadding="6">
-  <tr><th>Date</th><th>Name</th><th>Class</th><th>Batch</th><th>Subject</th></tr>
-  ${records.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.className}</td><td>${r.batch}</td><td>${r.subject}</td></tr>`).join("")}
-  </table>
-  <hr>
-  <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}${cls?`class=${cls}&`:''}${batch?`batch=${batch}&`:''}format=pdf">⬇ Download PDF</a><br>
-  <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}${cls?`class=${cls}&`:''}${batch?`batch=${batch}&`:''}format=csv">⬇ Download CSV</a>
-  `;
-  res.send(html);
+app.get("/home",(req,res)=>{
+res.send(`
+<h1 style="text-align:center">Dashboard</h1>
+<div style="text-align:center">
+<button onclick="location='/subject'">Subject</button>
+<button onclick="location='/class'">Class</button>
+<button onclick="location='/hod'">HOD</button>
+</div>
+`);
 });
-/* =========================
-   START SERVER
-========================= */
-app.listen(PORT,()=>console.log("🚀 Server running on port "+PORT));
 
+app.get("/subject",(req,res)=>res.send(viewPage("Subject Dashboard","subject")));
+app.get("/class",(req,res)=>res.send(viewPage("Class Dashboard","class")));
+app.get("/hod",(req,res)=>res.send(viewPage("HOD Dashboard","hod")));
+
+/* ================= START ================= */
+app.listen(PORT,()=>console.log("🚀 Server running"));
