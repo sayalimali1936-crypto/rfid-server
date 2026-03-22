@@ -9,15 +9,21 @@ const csvPath = path.join(__dirname, "attendance.csv");
 const timetablePath = path.join(__dirname, "Time_Table.csv");
 const studentsPath = path.join(__dirname, "Students.csv");
 
+/* ================= INIT ================= */
+if (!fs.existsSync(csvPath)) {
+ fs.writeFileSync(csvPath,
+  "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
+}
+
 /* ================= LOAD CSV ================= */
 function loadCSV(file){
  try{
-  const data = fs.readFileSync(file,"utf8");
-  const lines = data.trim().split(/\r?\n/);
-  const headers = lines.shift().split(",");
+  const data=fs.readFileSync(file,"utf8");
+  const lines=data.trim().split(/\r?\n/);
+  const headers=lines.shift().split(",");
   return lines.map(l=>{
    let obj={};
-   l.split(",").forEach((v,i)=>obj[headers[i].trim()] = v.trim());
+   l.split(",").forEach((v,i)=>obj[headers[i]] = v);
    return obj;
   });
  }catch(e){ return []; }
@@ -25,20 +31,6 @@ function loadCSV(file){
 
 const students = loadCSV(studentsPath);
 const timetable = loadCSV(timetablePath);
-
-/* ================= TIME ================= */
-function getNow(){
- const d = new Date(new Date().getTime()+19800000);
- return {
-  day:d.toLocaleString("en-US",{weekday:"long"}),
-  time:d.toTimeString().slice(0,5)
- };
-}
-
-function timeToMin(t){
- const [h,m]=t.split(":").map(Number);
- return h*60+m;
-}
 
 /* ================= RFID LOG ================= */
 app.get("/log",(req,res)=>{
@@ -48,24 +40,16 @@ app.get("/log",(req,res)=>{
  const student = students.find(s=>s.card_no===card);
  if(!student) return res.send("UNKNOWN");
 
- const {day,time} = getNow();
+ const now=new Date();
+ const day=now.toLocaleString("en-US",{weekday:"long"});
+ const time=now.toTimeString().slice(0,5);
 
- const slot = timetable.find(t=>{
-  if(t.day!==day) return false;
-
-  let start=timeToMin(t.start_time);
-  let end=timeToMin(t.end_time);
-  let now=timeToMin(time);
-
-  return now>=start && now<=end &&
-         t.class===student.class &&
-         (t.batch==="ALL" || t.batch===student.batch);
- });
+ const slot=timetable.find(t=>t.day===day && t.class===student.class);
 
  if(!slot) return res.send("NO_SLOT");
 
  const csv=[
-  new Date().toISOString().slice(0,10),
+  now.toISOString().slice(0,10),
   time,
   "STUDENT",
   student.student_name,
@@ -76,6 +60,7 @@ app.get("/log",(req,res)=>{
  ].join(",")+"\n";
 
  fs.appendFileSync(csvPath,csv);
+
  res.send("OK");
 });
 
@@ -95,7 +80,7 @@ function getData(filters){
   };
  }).filter(x=>x && x.name && x.name!=="UNKNOWN");
 
- /* FILTERS */
+ /* APPLY FILTERS */
  if(filters.subject) records=records.filter(r=>r.subject===filters.subject);
  if(filters.className) records=records.filter(r=>r.className===filters.className);
  if(filters.batch) records=records.filter(r=>r.batch===filters.batch);
@@ -124,10 +109,10 @@ function getData(filters){
 app.get("/api",(req,res)=>{
 
  const filters={
-  subject:req.query.subject||"",
-  className:req.query.className||"",
-  batch:req.query.batch||"",
-  student:req.query.student||""
+  subject:req.query.subject || "",
+  className:req.query.className || "",
+  batch:req.query.batch || "",
+  student:req.query.student || ""
  };
 
  const data=getData(filters);
@@ -136,50 +121,68 @@ app.get("/api",(req,res)=>{
  const classes=[...new Set(timetable.map(t=>t.class))];
  const batches=[...new Set(timetable.map(t=>t.batch))];
 
- /* LIVE SLOT */
- const {day,time} = getNow();
- const liveSlot = timetable.find(t=>{
-  let now=timeToMin(time);
-  return t.day===day &&
-         now>=timeToMin(t.start_time) &&
-         now<=timeToMin(t.end_time);
- });
-
- res.json({...data,subjects,classes,batches,liveSlot});
+ res.json({...data,subjects,classes,batches});
 });
 
 /* ================= UI ================= */
-app.get("/",(req,res)=>{
-res.send(`
+function page(title,mode){
+return `
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;font-family:Segoe UI;background:#020617;color:white;padding:20px}
-.card{background:#1e293b;padding:15px;margin:10px;border-radius:10px}
-select,input{margin:5px;padding:6px}
+body{margin:0;font-family:Segoe UI;background:#020617;color:white;display:flex}
+.sidebar{width:220px;background:#020617;padding:20px;border-right:1px solid #334155}
+.sidebar a{display:block;padding:10px;margin:5px;background:#1e293b;color:white;text-decoration:none;border-radius:6px}
+.sidebar a:hover{background:#6366f1}
+.main{flex:1;padding:20px}
+.cards{display:flex;gap:10px}
+.card{flex:1;background:#1e293b;padding:15px;border-radius:10px;text-align:center}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
+select,input{padding:6px;margin:5px;border-radius:5px}
+table{width:100%;margin-top:20px;border-collapse:collapse}
+td,th{padding:10px;border-bottom:1px solid #334155}
 </style>
 </head>
 
 <body>
 
-<h2>Smart Dashboard</h2>
+<div class="sidebar">
+<a href="/subject">Subject</a>
+<a href="/class">Class</a>
+<a href="/hod">HOD</a>
+</div>
 
-<div class="card" id="live"></div>
+<div class="main">
 
+<h2>${title}</h2>
+
+<div>
 <select id="subject"></select>
 <select id="className"></select>
 <select id="batch"></select>
-<input id="student" placeholder="Search student">
+${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
 <button onclick="load()">Apply</button>
+</div>
 
-<canvas id="chart"></canvas>
+<div class="cards">
+<div class="card">Lectures <h2 id="lec"></h2></div>
+<div class="card">Students <h2 id="stu"></h2></div>
+<div class="card">Defaulters <h2 id="def"></h2></div>
+</div>
 
-<table border="1" width="100%">
-<thead><tr><th>Name</th><th>%</th></tr></thead>
+<div class="grid">
+<canvas id="bar"></canvas>
+<canvas id="pie"></canvas>
+</div>
+
+<table>
+<tr><th>Name</th><th>%</th><th>Status</th></tr>
 <tbody id="table"></tbody>
 </table>
+
+</div>
 
 <script>
 
@@ -190,50 +193,58 @@ async function load(){
  let url="/api?subject="+subject.value+
  "&className="+className.value+
  "&batch="+batch.value+
- "&student="+student.value;
+ "&student="+(student?student.value:"");
 
  let d=await fetch(url).then(r=>r.json());
 
- /* LIVE */
- if(d.liveSlot){
-  live.innerHTML="📘 Live: "+d.liveSlot.subject+" ("+d.liveSlot.class+")";
- }else{
-  live.innerHTML="No active lecture";
- }
+ /* KEEP SELECTED VALUES */
+ let subVal=subject.value;
+ let clsVal=className.value;
+ let batVal=batch.value;
 
- /* FILTERS */
- subject.innerHTML='<option value="">Subject</option>';
- d.subjects.forEach(s=>subject.innerHTML+=\`<option>\${s}</option>\`);
+ subject.innerHTML='<option value="">All Subjects</option>';
+ d.subjects.forEach(s=>subject.innerHTML+=\`<option \${s===subVal?'selected':''}>\${s}</option>\`);
 
- className.innerHTML='<option value="">Class</option>';
- d.classes.forEach(c=>className.innerHTML+=\`<option>\${c}</option>\`);
+ className.innerHTML='<option value="">All Classes</option>';
+ d.classes.forEach(c=>className.innerHTML+=\`<option \${c===clsVal?'selected':''}>\${c}</option>\`);
 
- batch.innerHTML='<option value="">Batch</option>';
- d.batches.forEach(b=>batch.innerHTML+=\`<option>\${b}</option>\`);
+ batch.innerHTML='<option value="">All Batches</option>';
+ d.batches.forEach(b=>batch.innerHTML+=\`<option \${b===batVal?'selected':''}>\${b}</option>\`);
 
- /* GRAPH */
- let labels=Object.keys(d.subjectWise);
- let values=Object.values(d.subjectWise);
+ lec.innerText=d.total;
+ stu.innerText=Object.keys(d.studentData).length;
+ def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+
+ let labels="${mode}"==="hod"?Object.keys(d.classWise):Object.keys(d.subjectWise);
+ let values="${mode}"==="hod"?Object.values(d.classWise):Object.values(d.subjectWise);
 
  if(chart) chart.destroy();
- chart=new Chart(chart,{type:"bar",data:{labels,datasets:[{data:values}]}});
+ chart=new Chart(bar,{type:"bar",data:{labels,datasets:[{data:values}]}});
 
- /* TABLE */
  table.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
-  table.innerHTML+=\`<tr><td>\${n}</td><td>\${v.percent}%</td></tr>\`;
+  table.innerHTML+=\`<tr>
+  <td>\${n}</td>
+  <td>\${v.percent}%</td>
+  <td style="color:\${v.def?'red':'lime'}">\${v.def?'Defaulter':'OK'}</td>
+  </tr>\`;
  });
 }
 
-setInterval(load,3000);
 load();
 
 </script>
 
 </body>
 </html>
-`);
-});
+`;
+}
+
+/* ================= ROUTES ================= */
+app.get("/",(req,res)=>res.redirect("/subject"));
+app.get("/subject",(req,res)=>res.send(page("Subject Teacher View","subject")));
+app.get("/class",(req,res)=>res.send(page("Class Teacher View","class")));
+app.get("/hod",(req,res)=>res.send(page("HOD View","hod")));
 
 /* ================= START ================= */
 app.listen(PORT,()=>console.log("🚀 Server running"));
