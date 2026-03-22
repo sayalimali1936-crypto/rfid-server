@@ -520,6 +520,32 @@ async function load(){
  barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
 
  if(pieChart) pieChart.destroy();
- pieChart=new Chart(pie,{type:"doughnut",data:{labels:labels,datasets
+ pieChart=new Chart(pie,{type:"doughnut",data:{labels:labels,datasets:[{data:values}]}});
 
+ if(lineChart) lineChart.destroy();
+ lineChart=new Chart(line,{type:"line",data:{labels:labels,datasets:[{data:values}]}});
 
+ let t=document.getElementById("table");
+ t.innerHTML="";
+ Object.entries(d.studentData).forEach(([n,v])=>{
+  t.innerHTML+=\`
+  <tr>
+   <td>\${n}</td>
+   <td>\${v.percent}%</td>
+   <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
+  </tr>\`;
+ });
+}
+
+function exportData(){
+ window.location="/download";
+}
+
+load();
+setInterval(load,5000);
+</script>
+
+</body>
+</html>
+`);
+});
