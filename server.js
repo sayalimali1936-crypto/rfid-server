@@ -12,12 +12,12 @@ const studentsPath = path.join(__dirname, "Students.csv");
 /* ================= LOAD CSV ================= */
 function loadCSV(file){
  try{
-  const data=fs.readFileSync(file,"utf8");
-  const lines=data.trim().split(/\r?\n/);
-  const headers=lines.shift().split(",");
+  const data = fs.readFileSync(file,"utf8");
+  const lines = data.trim().split(/\r?\n/);
+  const headers = lines.shift().split(",");
   return lines.map(l=>{
    let obj={};
-   l.split(",").forEach((v,i)=>obj[headers[i]]=v);
+   l.split(",").forEach((v,i)=>obj[headers[i].trim()] = v.trim());
    return obj;
   });
  }catch(e){ return []; }
@@ -25,6 +25,20 @@ function loadCSV(file){
 
 const students = loadCSV(studentsPath);
 const timetable = loadCSV(timetablePath);
+
+/* ================= TIME ================= */
+function getNow(){
+ const d = new Date(new Date().getTime()+19800000);
+ return {
+  day:d.toLocaleString("en-US",{weekday:"long"}),
+  time:d.toTimeString().slice(0,5)
+ };
+}
+
+function timeToMin(t){
+ const [h,m]=t.split(":").map(Number);
+ return h*60+m;
+}
 
 /* ================= RFID LOG ================= */
 app.get("/log",(req,res)=>{
@@ -34,16 +48,25 @@ app.get("/log",(req,res)=>{
  const student = students.find(s=>s.card_no===card);
  if(!student) return res.send("UNKNOWN");
 
- const now=new Date();
- const day=now.toLocaleString("en-US",{weekday:"long"});
+ const {day,time} = getNow();
 
- const slot=timetable.find(t=>t.day===day && t.class===student.class);
+ const slot = timetable.find(t=>{
+  if(t.day!==day) return false;
+
+  let start=timeToMin(t.start_time);
+  let end=timeToMin(t.end_time);
+  let now=timeToMin(time);
+
+  return now>=start && now<=end &&
+         t.class===student.class &&
+         (t.batch==="ALL" || t.batch===student.batch);
+ });
 
  if(!slot) return res.send("NO_SLOT");
 
  const csv=[
-  now.toISOString().slice(0,10),
-  now.toTimeString().slice(0,5),
+  new Date().toISOString().slice(0,10),
+  time,
   "STUDENT",
   student.student_name,
   card,
@@ -72,7 +95,7 @@ function getData(filters){
   };
  }).filter(x=>x && x.name && x.name!=="UNKNOWN");
 
- /* APPLY FILTERS */
+ /* FILTERS */
  if(filters.subject) records=records.filter(r=>r.subject===filters.subject);
  if(filters.className) records=records.filter(r=>r.className===filters.className);
  if(filters.batch) records=records.filter(r=>r.batch===filters.batch);
@@ -113,131 +136,50 @@ app.get("/api",(req,res)=>{
  const classes=[...new Set(timetable.map(t=>t.class))];
  const batches=[...new Set(timetable.map(t=>t.batch))];
 
- res.json({...data,subjects,classes,batches});
+ /* LIVE SLOT */
+ const {day,time} = getNow();
+ const liveSlot = timetable.find(t=>{
+  let now=timeToMin(time);
+  return t.day===day &&
+         now>=timeToMin(t.start_time) &&
+         now<=timeToMin(t.end_time);
+ });
+
+ res.json({...data,subjects,classes,batches,liveSlot});
 });
 
 /* ================= UI ================= */
-function page(title,mode){
-return `
-<!DOCTYPE html>
+app.get("/",(req,res)=>{
+res.send(`
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{
- margin:0;
- font-family:Segoe UI;
- background:#020617;
- color:white;
- display:flex;
-}
-
-/* SIDEBAR */
-.sidebar{
- width:220px;
- padding:20px;
- background:#020617;
- border-right:1px solid #334155;
-}
-
-.sidebar a{
- display:block;
- padding:10px;
- margin:5px;
- border-radius:8px;
- background:#1e293b;
- color:white;
- text-decoration:none;
- transition:.3s;
-}
-.sidebar a:hover{
- background:#6366f1;
- transform:translateX(5px);
-}
-
-/* MAIN */
-.main{
- flex:1;
- padding:20px;
- animation:fadeIn .5s ease;
-}
-
-@keyframes fadeIn{
- from{opacity:0; transform:translateY(10px)}
- to{opacity:1; transform:translateY(0)}
-}
-
-/* CARDS */
-.cards{
- display:flex;
- gap:15px;
-}
-
-.card{
- flex:1;
- padding:20px;
- border-radius:12px;
- background:linear-gradient(135deg,#6366f1,#22c55e);
- text-align:center;
- transition:.3s;
-}
-.card:hover{
- transform:scale(1.05);
-}
-
-/* FILTERS */
-select,input{
- padding:8px;
- margin:5px;
- border-radius:6px;
-}
-
-/* TABLE */
-table{
- width:100%;
- margin-top:20px;
- border-collapse:collapse;
-}
-td,th{
- padding:10px;
- border-bottom:1px solid #334155;
-}
+body{margin:0;font-family:Segoe UI;background:#020617;color:white;padding:20px}
+.card{background:#1e293b;padding:15px;margin:10px;border-radius:10px}
+select,input{margin:5px;padding:6px}
 </style>
 </head>
 
 <body>
 
-<div class="sidebar">
-<a href="/subject">Subject</a>
-<a href="/class">Class</a>
-<a href="/hod">HOD</a>
-</div>
+<h2>Smart Dashboard</h2>
 
-<div class="main">
-
-<h2>${title}</h2>
+<div class="card" id="live"></div>
 
 <select id="subject"></select>
 <select id="className"></select>
 <select id="batch"></select>
-${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
+<input id="student" placeholder="Search student">
 <button onclick="load()">Apply</button>
 
-<div class="cards">
-<div class="card">Lectures <h2 id="lec"></h2></div>
-<div class="card">Students <h2 id="stu"></h2></div>
-<div class="card">Defaulters <h2 id="def"></h2></div>
-</div>
+<canvas id="chart"></canvas>
 
-<canvas id="bar"></canvas>
-
-<table>
-<tr><th>Name</th><th>%</th><th>Status</th></tr>
+<table border="1" width="100%">
+<thead><tr><th>Name</th><th>%</th></tr></thead>
 <tbody id="table"></tbody>
 </table>
-
-</div>
 
 <script>
 
@@ -245,59 +187,53 @@ let chart;
 
 async function load(){
 
- const subVal=subject.value;
- const clsVal=className.value;
- const batVal=batch.value;
- const stuVal=student?student.value:"";
-
- let url="/api?subject="+subVal+"&className="+clsVal+"&batch="+batVal+"&student="+stuVal;
+ let url="/api?subject="+subject.value+
+ "&className="+className.value+
+ "&batch="+batch.value+
+ "&student="+student.value;
 
  let d=await fetch(url).then(r=>r.json());
 
- /* PRESERVE FILTERS */
+ /* LIVE */
+ if(d.liveSlot){
+  live.innerHTML="📘 Live: "+d.liveSlot.subject+" ("+d.liveSlot.class+")";
+ }else{
+  live.innerHTML="No active lecture";
+ }
+
+ /* FILTERS */
  subject.innerHTML='<option value="">Subject</option>';
- d.subjects.forEach(s=>subject.innerHTML+=\`<option \${s===subVal?'selected':''}>\${s}</option>\`);
+ d.subjects.forEach(s=>subject.innerHTML+=\`<option>\${s}</option>\`);
 
  className.innerHTML='<option value="">Class</option>';
- d.classes.forEach(c=>className.innerHTML+=\`<option \${c===clsVal?'selected':''}>\${c}</option>\`);
+ d.classes.forEach(c=>className.innerHTML+=\`<option>\${c}</option>\`);
 
  batch.innerHTML='<option value="">Batch</option>';
- d.batches.forEach(b=>batch.innerHTML+=\`<option \${b===batVal?'selected':''}>\${b}</option>\`);
+ d.batches.forEach(b=>batch.innerHTML+=\`<option>\${b}</option>\`);
 
- lec.innerText=d.total;
- stu.innerText=Object.keys(d.studentData).length;
- def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
-
- let labels="${mode}"==="hod"?Object.keys(d.classWise):Object.keys(d.subjectWise);
- let values="${mode}"==="hod"?Object.values(d.classWise):Object.values(d.subjectWise);
+ /* GRAPH */
+ let labels=Object.keys(d.subjectWise);
+ let values=Object.values(d.subjectWise);
 
  if(chart) chart.destroy();
- chart=new Chart(bar,{type:"bar",data:{labels,datasets:[{data:values}]}});
+ chart=new Chart(chart,{type:"bar",data:{labels,datasets:[{data:values}]}});
 
+ /* TABLE */
  table.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
-  table.innerHTML+=\`<tr>
-  <td>\${n}</td>
-  <td>\${v.percent}%</td>
-  <td style="color:\${v.def?'red':'lime'}">\${v.def?'Defaulter':'OK'}</td>
-  </tr>\`;
+  table.innerHTML+=\`<tr><td>\${n}</td><td>\${v.percent}%</td></tr>\`;
  });
 }
 
+setInterval(load,3000);
 load();
 
 </script>
 
 </body>
 </html>
-`;
-}
-
-/* ================= ROUTES ================= */
-app.get("/",(req,res)=>res.redirect("/subject"));
-app.get("/subject",(req,res)=>res.send(page("Subject Teacher View","subject")));
-app.get("/class",(req,res)=>res.send(page("Class Teacher View","class")));
-app.get("/hod",(req,res)=>res.send(page("HOD View","hod")));
+`);
+});
 
 /* ================= START ================= */
 app.listen(PORT,()=>console.log("🚀 Server running"));
