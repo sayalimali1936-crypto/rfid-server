@@ -1,238 +1,268 @@
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
+const fs = require("fs");
 
 const app = express();
-app.use(express.json());
-
 const PORT = process.env.PORT || 10000;
 
-/* ================= DATABASE ================= */
-const db = new sqlite3.Database("./attendance.db");
+/* =========================
+   DATABASE
+========================= */
+const dbPath = path.join(__dirname, "attendance.db");
+const csvPath = path.join(__dirname, "attendance.csv");
 
-db.serialize(()=>{
- db.run(`CREATE TABLE IF NOT EXISTS users(
-  id INTEGER PRIMARY KEY,
-  username TEXT,
-  password TEXT,
-  role TEXT
- )`);
+const db = new sqlite3.Database(dbPath);
 
- db.run(`CREATE TABLE IF NOT EXISTS attendance(
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT,
-  class TEXT,
-  subject TEXT,
-  date TEXT
- )`);
+db.run(`
+CREATE TABLE IF NOT EXISTS attendance (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ card_no TEXT,
+ timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
 
- /* DEFAULT USERS */
- db.run(`INSERT OR IGNORE INTO users VALUES (1,'teacher','1234','teacher')`);
- db.run(`INSERT OR IGNORE INTO users VALUES (2,'hod','1234','hod')`);
-});
+if (!fs.existsSync(csvPath)) {
+ fs.writeFileSync(csvPath,
+  "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
+}
 
-/* ================= LOGIN ================= */
-app.post("/login",(req,res)=>{
- const {username,password}=req.body;
+/* =========================
+   LOAD CSV
+========================= */
+function loadCSV(file) {
+ const data = fs.readFileSync(path.join(__dirname, file), "utf8");
+ const lines = data.trim().split(/\r?\n/);
+ const headers = lines.shift().split(",");
 
- db.get(
-  "SELECT * FROM users WHERE username=? AND password=?",
-  [username,password],
-  (err,row)=>{
-   if(row){
-    res.json({success:true,role:row.role});
-   }else{
-    res.json({success:false});
-   }
+ return lines.map(line => {
+  const values = line.split(",");
+  let obj = {};
+  headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());
+  return obj;
+ });
+}
+
+const students = loadCSV("Students.csv");
+const staffMaster = loadCSV("Staff_Master.csv");
+const timetable = loadCSV("Time_Table.csv");
+
+/* =========================
+   HELPERS
+========================= */
+function normalize(v){ return v?.toString().trim().toUpperCase(); }
+
+function timeToMinutes(t){
+ const [h,m]=t.split(":").map(Number);
+ return h*60+m;
+}
+
+function identifyCard(cardNo){
+ const student = students.find(s=>normalize(s.card_no)===normalize(cardNo));
+ if(student) return {type:"STUDENT",data:student};
+
+ const staff = staffMaster.find(s=>normalize(s.staff_card_no)===normalize(cardNo));
+ if(staff) return {type:"STAFF",data:staff};
+
+ return {type:"UNKNOWN",data:null};
+}
+
+function getIndianTime(){
+ const d = new Date(new Date().getTime()+19800000);
+ const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+ return {
+  date:d.toISOString().slice(0,10),
+  time:d.toTimeString().slice(0,5),
+  day:days[d.getDay()]
+ };
+}
+
+function getActiveSlot(day,time,identity){
+ const now=timeToMinutes(time);
+
+ return timetable.find(slot=>{
+  if(normalize(slot.day)!==normalize(day)) return false;
+
+  const start=timeToMinutes(slot.start_time.slice(0,5));
+  const end=timeToMinutes(slot.end_time.slice(0,5));
+
+  if(now<start || now>end) return false;
+
+  if(identity.type==="STUDENT"){
+   return normalize(slot.class)===normalize(identity.data.class);
   }
- );
-});
 
-/* ================= RFID LOG ================= */
+  if(identity.type==="STAFF"){
+   return normalize(slot.staff_id)===normalize(identity.data.staff_id);
+  }
+
+  return false;
+ });
+}
+
+/* =========================
+   ROUTES
+========================= */
+app.get("/",(req,res)=>res.send("RFID Running"));
+app.get("/dashboard",(req,res)=>{ res.redirect("/home"); });
+
+/* =========================
+   LOG
+========================= */
 app.get("/log",(req,res)=>{
- const {name,className,subject}=req.query;
+ const card=req.query.card_no;
+ if(!card) return res.send("NO_CARD");
 
- const date=new Date().toISOString().slice(0,10);
+ const id=identifyCard(card);
+ const {date,time,day}=getIndianTime();
 
- db.run(
-  "INSERT INTO attendance(name,class,subject,date) VALUES(?,?,?,?)",
-  [name||"Unknown",className||"NA",subject||"NA",date]
- );
+ const slot=getActiveSlot(day,time,id);
+ if(!slot) return res.send("NO_SLOT");
+
+ db.run(`INSERT INTO attendance (card_no) VALUES (?)`,[normalize(card)]);
+
+ const csv=[date,time,id.type,
+  id.data?.student_name || id.data?.staff_name || "UNKNOWN",
+  card,
+  slot.class,
+  id.data?.batch || slot.batch,
+  slot.subject
+ ].join(",")+"\n";
+
+ fs.appendFileSync(csvPath,csv);
 
  res.send("OK");
 });
 
-/* ================= DATA ENGINE ================= */
-app.get("/api/data",(req,res)=>{
+/* =========================
+   DOWNLOAD
+========================= */
+app.get("/download",(req,res)=>res.download(csvPath));
 
- db.all("SELECT * FROM attendance",(err,rows)=>{
-
-  let student={},subject={},classWise={},todayMap={};
-  let today=new Date().toISOString().slice(0,10);
-
-  rows.forEach(r=>{
-   student[r.name]=(student[r.name]||0)+1;
-   subject[r.subject]=(subject[r.subject]||0)+1;
-   classWise[r.class]=(classWise[r.class]||0)+1;
-
-   if(r.date===today) todayMap[r.name]=true;
-  });
-
-  let totalLectures=rows.length||1;
-
-  let studentData={};
-  Object.keys(student).forEach(n=>{
-   let p=(student[n]/totalLectures)*100;
-   studentData[n]={
-    percent:p.toFixed(1),
-    def:p<75,
-    today:todayMap[n]||false
-   };
-  });
-
-  res.json({studentData,subject,classWise,totalLectures});
- });
-});
-
-/* ================= UI ================= */
-app.get("/",(req,res)=>{
+/* =========================
+   HOME PAGE
+========================= */
+app.get("/home",(req,res)=>{
 res.send(`
 <!DOCTYPE html>
 <html>
 <head>
+<title>Smart Attendance Dashboard</title>
 <style>
-body{font-family:Segoe UI;text-align:center;background:#020617;color:white;padding-top:100px}
-input{padding:10px;margin:10px}
-button{padding:10px;background:#6366f1;color:white;border:none}
+body{font-family:'Segoe UI';background:#0f172a;color:white;text-align:center;margin:0;padding:0;}
+h1{margin-top:40px;}
+button{margin:10px;padding:12px 20px;border:none;border-radius:8px;background:#6366f1;color:white;cursor:pointer;transition:0.3s;}
+button:hover{background:#4f46e5;}
 </style>
 </head>
-
 <body>
-
-<h1>🔐 Login</h1>
-
-<input id="user" placeholder="Username"><br>
-<input id="pass" type="password" placeholder="Password"><br>
-
-<button onclick="login()">Login</button>
-
+<h1>📊 Smart Attendance Dashboard</h1>
+<div>
+<button onclick="go('/subject')">📘 Subject Teacher</button>
+<button onclick="go('/class')">👩‍🏫 Class Teacher</button>
+<button onclick="go('/hod')">🏫 HOD</button>
+</div>
 <script>
-async function login(){
- let u=user.value;
- let p=pass.value;
-
- let res=await fetch("/login",{
-  method:"POST",
-  headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({username:u,password:p})
- });
-
- let d=await res.json();
-
- if(d.success){
-  location="/dashboard?role="+d.role;
- }else{
-  alert("Invalid login");
- }
-}
+function go(x){location=x}
 </script>
-
 </body>
 </html>
 `);
 });
 
-/* ================= DASHBOARD ================= */
-app.get("/dashboard",(req,res)=>{
-res.send(`
+/* =========================
+   API
+========================= */
+app.get("/api/data",(req,res)=>{
+ const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
+
+ let records=data.map(l=>{
+  let p=l.split(",");
+  if(p.length<8) return null;
+  return {date:p[0],name:p[3],className:p[5],subject:p[7]};
+ }).filter(x=>x && x.name);
+
+ let student={},subjectWise={},classWise={};
+
+ records.forEach(r=>{
+  student[r.name]=(student[r.name]||0)+1;
+  subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
+  classWise[r.className]=(classWise[r.className]||0)+1;
+ });
+
+ let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+
+ let studentData={};
+ Object.keys(student).forEach(n=>{
+  let p=(student[n]/totalLectures)*100;
+  studentData[n]={count:student[n],percent:p.toFixed(1),def:p<75};
+ });
+
+ res.json({totalLectures,studentData,subjectWise,classWise});
+});
+
+/* =========================
+   VIEW GENERATOR
+========================= */
+function viewPage(title,mode){
+return `
 <!DOCTYPE html>
 <html>
 <head>
+<title>${title}</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-body{margin:0;display:flex;background:#020617;color:white;font-family:Segoe UI}
-.sidebar{width:220px;background:#020617;padding:20px}
-.sidebar button{width:100%;padding:10px;margin:5px;background:#1e293b;color:white;border:none}
-.main{flex:1;padding:20px}
-.cards{display:flex;gap:10px}
-.card{flex:1;padding:20px;background:#1e293b;border-radius:10px;text-align:center}
-.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
-table{width:100%;margin-top:20px;border-collapse:collapse}
-td,th{padding:10px;border-bottom:1px solid #334155}
-.def{color:red}
-.ok{color:lime}
+body{margin:0;font-family:'Segoe UI';display:flex;background:#0f172a;color:white;}
+.sidebar{width:220px;background:#1e293b;padding:20px;}
+.sidebar h2{text-align:center;}
+.sidebar button{width:100%;padding:10px;margin:6px 0;border:none;border-radius:8px;background:#6366f1;color:white;cursor:pointer;}
+.sidebar button:hover{background:#4f46e5;}
+.main{flex:1;padding:20px;}
+.cards{display:flex;gap:15px;margin-bottom:20px;}
+.card{flex:1;padding:20px;border-radius:12px;background:#1e293b;text-align:center;}
+.card h2{margin:0;}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;}
+.section{background:#1e293b;padding:20px;border-radius:12px;margin-top:20px;}
+table{width:100%;border-collapse:collapse;}
+th,td{padding:10px;border-bottom:1px solid #334155;}
+.def{color:#ef4444}.ok{color:#22c55e}
 </style>
-
 </head>
-
 <body>
-
 <div class="sidebar">
-<button onclick="load()">Refresh</button>
-<button onclick="window.print()">Export PDF</button>
+<h2>📊 Dashboard</h2>
+<button onclick="go('/home')">🏠 Home</button>
+<button onclick="go('/subject')">📘 Subject</button>
+<button onclick="go('/class')">👩‍🏫 Class</button>
+<button onclick="go('/hod')">🏫 HOD</button>
+<hr>
+<button onclick="exportData()">⬇ Export</button>
 </div>
-
 <div class="main">
-
+<h2>${title}</h2>
 <div class="cards">
-<div class="card">Lectures <h2 id="lec"></h2></div>
-<div class="card">Students <h2 id="stu"></h2></div>
-<div class="card">Defaulters <h2 id="def"></h2></div>
+<div class="card">Lectures<h2 id="lec"></h2></div>
+<div class="card">Students<h2 id="stu"></h2></div>
+<div class="card">Defaulters<h2 id="def"></h2></div>
 </div>
-
 <div class="grid">
-<canvas id="bar"></canvas>
-<canvas id="pie"></canvas>
+<div class="section"><canvas id="bar"></canvas></div>
+<div class="section"><canvas id="pie"></canvas></div>
 </div>
-
+<div class="section"><canvas id="line"></canvas></div>
+<div class="section">
 <table>
-<tr><th>Name</th><th>%</th><th>Today</th><th>Status</th></tr>
+<thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
 <tbody id="table"></tbody>
 </table>
-
 </div>
-
+</div>
 <script>
-
+let barChart,pieChart,lineChart;
+function go(x){window.location=x}
 async function load(){
-
  let d=await fetch("/api/data").then(r=>r.json());
-
  lec.innerText=d.totalLectures;
  stu.innerText=Object.keys(d.studentData).length;
  def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
-
- new Chart(bar,{
-  type:"bar",
-  data:{
-   labels:Object.keys(d.subject),
-   datasets:[{data:Object.values(d.subject)}]
-  }
- });
-
- let t=document.getElementById("table");
- t.innerHTML="";
-
- Object.entries(d.studentData).forEach(([n,v])=>{
-  t.innerHTML+=\`
-  <tr>
-  <td>\${n}</td>
-  <td>\${v.percent}%</td>
-  <td>\${v.today?'✔':'❌'}</td>
-  <td class="\${v.def?'def':'ok'}">\${v.def?'OK':'Defaulter'}</td>
-  </tr>\`;
- });
-}
-
-load();
-
-</script>
-
-</body>
-</html>
-`);
-});
-
-/* ================= START ================= */
-app.listen(PORT,()=>console.log("🚀 Server running"));
+ let labels,values;
+ if("${mode}"==="subject"){labels=Object.keys
