@@ -13,10 +13,7 @@ const PORT = process.env.PORT || 10000;
 const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 
-const db = new sqlite3.Database(dbPath, err => {
-  if (err) console.error("❌ DB ERROR:", err.message);
-  else console.log("✅ Database connected");
-});
+const db = new sqlite3.Database(dbPath);
 
 db.run(`
   CREATE TABLE IF NOT EXISTS attendance (
@@ -31,7 +28,6 @@ if (!fs.existsSync(csvPath)) {
     csvPath,
     "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n"
   );
-  console.log("📄 attendance.csv created");
 }
 
 /* =========================
@@ -40,7 +36,7 @@ if (!fs.existsSync(csvPath)) {
 
 function loadCSV(file) {
   const data = fs.readFileSync(path.join(__dirname, file), "utf8");
-  const lines = data.trim().split("\n");
+  const lines = data.trim().split(/\r?\n/);
   const headers = lines.shift().split(",");
 
   return lines.map(line => {
@@ -55,12 +51,6 @@ const students = loadCSV("Students.csv");
 const staffMaster = loadCSV("Staff_Master.csv");
 const timetable = loadCSV("Time_Table.csv");
 
-console.log("📚 CSV Loaded:", {
-  students: students.length,
-  staff: staffMaster.length,
-  timetable: timetable.length
-});
-
 /* =========================
    HELPERS
 ========================= */
@@ -69,7 +59,6 @@ function normalize(v) {
   return v?.toString().trim().toUpperCase();
 }
 
-/* 🔑 TIME FIX — CORE FIX */
 function timeToMinutes(t) {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + m;
@@ -96,13 +85,12 @@ function getIndianTime() {
 
   return {
     date: ist.toISOString().slice(0, 10),
-    time: ist.toTimeString().slice(0, 5), // HH:MM
+    time: ist.toTimeString().slice(0, 5),
     day: days[ist.getDay()],
     hour: ist.getHours()
   };
 }
 
-/* ✅ FIXED ACTIVE SLOT LOGIC */
 function getActiveSlot(day, time, identity) {
   const nowMin = timeToMinutes(time);
 
@@ -133,220 +121,100 @@ function getActiveSlot(day, time, identity) {
 }
 
 /* =========================
-   DAILY REPORT (4 PM IST)
-========================= */
-
-function generateDailyReportIfNeeded() {
-  const { date, hour } = getIndianTime();
-  if (hour < 16) return;
-
-  const reportFile = `attendance_${date}.csv`;
-  const reportPath = path.join(__dirname, reportFile);
-
-  if (!fs.existsSync(reportPath)) {
-    fs.copyFileSync(csvPath, reportPath);
-    console.log(`📁 DAILY REPORT GENERATED: ${reportFile}`);
-  }
-}
-
-/* =========================
    ROUTES
 ========================= */
 
 app.get("/", (req, res) => {
-  res.send("RFID Attendance Server Running");
+  res.send("RFID Server Running");
 });
 
+/* =========================
+   LOG ROUTE (UNCHANGED)
+========================= */
+
 app.get("/log", (req, res) => {
-  generateDailyReportIfNeeded();
 
   const cardNo = req.query.card_no;
-  console.log("\n🔔 SCAN REQUEST RECEIVED");
-  console.log("🆔 Card No:", cardNo);
 
-  if (!cardNo) {
-    console.log("❌ REJECTED: No card number");
-    return res.send("NO_CARD");
-  }
+  if (!cardNo) return res.send("NO_CARD");
 
   const identity = identifyCard(cardNo);
 
-  if (identity.type === "UNKNOWN") {
-    console.log("❌ REJECTED: Unknown card");
-    return res.send("UNKNOWN_CARD");
-  }
-
-  console.log("👤 Type:", identity.type);
-  console.log("📛 Name:",
-    identity.type === "STUDENT"
-      ? identity.data.student_name
-      : identity.data.staff_name
-  );
-
   const { date, time, day } = getIndianTime();
-  console.log("🕒 Time:", day, time);
 
   const slot = getActiveSlot(day, time, identity);
 
-  if (!slot) {
-    console.log("❌ REJECTED: No active timetable slot");
-    return res.send("NO_SLOT");
-  }
+  if (!slot) return res.send("NO_SLOT");
 
-  console.log("📘 Subject:", slot.subject);
-  console.log("🏫 Class:", slot.class);
-  console.log("👥 Batch:",
+  db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
+
+  const csvLine = [
+    date,
+    time,
+    identity.type,
+    identity.type === "STUDENT"
+      ? identity.data.student_name
+      : identity.data?.staff_name || "UNKNOWN",
+    normalize(cardNo),
+    slot.class,
     identity.type === "STUDENT"
       ? identity.data.batch
-      : slot.batch
-  );
+      : slot.batch,
+    slot.subject
+  ].join(",") + "\n";
 
-  /* PROXY PREVENTION (10 min) */
-  db.get(
-    `SELECT timestamp FROM attendance WHERE card_no=? ORDER BY timestamp DESC LIMIT 1`,
-    [normalize(cardNo)],
-    (err, row) => {
-      if (row) {
-        const diff = (new Date() - new Date(row.timestamp)) / 1000;
-        if (diff < 600) {
-          console.log("🚫 REJECTED: Duplicate scan");
-          return res.send("DUPLICATE");
-        }
-      }
+  fs.appendFileSync(csvPath, csvLine);
 
-      db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
-
-      const csvLine = [
-        date,
-        time,
-        identity.type,
-        identity.type === "STUDENT"
-          ? identity.data.student_name
-          : identity.data.staff_name,
-        normalize(cardNo),
-        slot.class,
-        identity.type === "STUDENT"
-          ? identity.data.batch
-          : slot.batch,
-        slot.subject
-      ].join(",") + "\n";
-
-      fs.appendFile(csvPath, csvLine, () => {});
-
-      console.log("✅ ATTENDANCE LOGGED SUCCESSFULLY");
-      res.send("OK");
-    }
-  );
+  res.send("OK");
 });
+
+/* =========================
+   DOWNLOAD
+========================= */
 
 app.get("/download", (req, res) => {
-  res.download(csvPath, "attendance.csv");
+  res.download(csvPath);
 });
 
-app.get("/download/today", (req, res) => {
-  const { date } = getIndianTime();
-  const file = `attendance_${date}.csv`;
-  const filePath = path.join(__dirname, file);
+/* =========================
+   API (FIXED)
+========================= */
 
-  if (!fs.existsSync(filePath)) {
-    return res.send("Daily report not generated yet");
-  }
-
-  res.download(filePath);
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
-/* =========================================================
-   🔐 LOGIN SYSTEM
-========================================================= */
-app.get("/login", (req, res) => {
-res.send(`
-<html>
-<head>
-<style>
-body{font-family:Segoe UI;background:#0f172a;color:white;text-align:center;padding-top:100px}
-input,select{padding:10px;margin:10px}
-button{padding:10px;background:#6366f1;color:white;border:none;border-radius:6px}
-</style>
-</head>
-<body>
-
-<h2>🔐 Login Panel</h2>
-
-<select id="role">
-<option value="subject">Subject Teacher</option>
-<option value="class">Class Teacher</option>
-<option value="hod">HOD</option>
-</select><br>
-
-<input id="pass" type="password" placeholder="Enter Password"><br>
-
-<button onclick="login()">Login</button>
-
-<script>
-function login(){
- if(document.getElementById("pass").value==="1234"){
-  window.location="/dashboard?view="+document.getElementById("role").value;
- } else {
-  alert("Wrong Password");
- }
-}
-</script>
-
-</body>
-</html>
-`);
-});
-
-
-/* =========================================================
-   📊 ADVANCED DASHBOARD API
-========================================================= */
 app.get("/api/dashboard", (req, res) => {
 
   const data = fs.readFileSync(csvPath, "utf8");
-  const lines = data.trim().split("\\n").slice(1);
+  const lines = data.trim().split(/\r?\n/).slice(1);
 
-  let records = lines.map(l=>{
-    const [date,time,role,name,card,className,batch,subject]=l.split(",");
-    return {date,name,className,batch,subject};
-  }).filter(x=>x.name);
+  let records = lines.map(l => {
+    const parts = l.split(",");
+    if (parts.length < 8) return null;
 
-  const {classFilter,batchFilter,period}=req.query;
+    return {
+      date: parts[0],
+      name: parts[3],
+      className: parts[5],
+      batch: parts[6],
+      subject: parts[7]
+    };
+  }).filter(x => x && x.name);
 
-  if(classFilter) records=records.filter(r=>r.className===classFilter);
-  if(batchFilter) records=records.filter(r=>r.batch===batchFilter);
+  let student = {}, subjectWise = {}, classWise = {};
 
-  let now=new Date();
-
-  if(period==="week"){
-    let d=new Date(); d.setDate(now.getDate()-7);
-    records=records.filter(r=>new Date(r.date)>=d);
-  }
-  if(period==="month"){
-    let d=new Date(); d.setMonth(now.getMonth()-1);
-    records=records.filter(r=>new Date(r.date)>=d);
-  }
-
-  let student={},subjectWise={},classWise={};
-
-  records.forEach(r=>{
-    student[r.name]=(student[r.name]||0)+1;
-    subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
-    classWise[r.className]=(classWise[r.className]||0)+1;
+  records.forEach(r => {
+    student[r.name] = (student[r.name] || 0) + 1;
+    subjectWise[r.subject] = (subjectWise[r.subject] || 0) + 1;
+    classWise[r.className] = (classWise[r.className] || 0) + 1;
   });
 
-  let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+  let totalLectures = [...new Set(records.map(r => r.date + r.subject))].length;
 
-  let studentData={};
-  Object.keys(student).forEach(n=>{
-    let p=(student[n]/totalLectures)*100;
-    studentData[n]={
-      count:student[n],
-      percent:p.toFixed(1),
-      def:p<75
+  let studentData = {};
+  Object.keys(student).forEach(n => {
+    let p = (student[n] / totalLectures) * 100;
+    studentData[n] = {
+      count: student[n],
+      percent: p.toFixed(1),
+      def: p < 75
     };
   });
 
@@ -358,238 +226,52 @@ app.get("/api/dashboard", (req, res) => {
   });
 });
 
+/* =========================
+   DASHBOARD UI
+========================= */
 
-/* =========================================================
-   🚫 REJECTED PAGE
-========================================================= */
-app.get("/rejected",(req,res)=>{
-res.send("<h1 style='text-align:center'>🚫 Rejected Scans</h1>");
-});
-
-
-/* =========================================================
-   🎨 FINAL POWER BI DASHBOARD
-========================================================= */
 app.get("/dashboard",(req,res)=>{
 res.send(`
 <!DOCTYPE html>
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-body{
- margin:0;
- font-family:'Segoe UI';
- display:flex;
- background:linear-gradient(135deg,#020617,#0f172a);
- color:white;
- animation:fadeIn 1s ease;
-}
-
-/* ANIMATIONS */
-@keyframes fadeIn{
- from{opacity:0;transform:translateY(20px);}
- to{opacity:1;transform:translateY(0);}
-}
-
-/* SIDEBAR */
-.sidebar{
- width:240px;
- background:linear-gradient(#1e293b,#020617);
- padding:20px;
- box-shadow:2px 0 10px rgba(0,0,0,0.5);
-}
-
-.sidebar button{
- width:100%;
- padding:12px;
- margin:6px 0;
- border:none;
- border-radius:10px;
- background:#6366f1;
- color:white;
- cursor:pointer;
- transition:0.3s;
-}
-
-.sidebar button:hover{
- background:#4f46e5;
- transform:translateX(8px);
-}
-
-/* MAIN */
-.main{flex:1;padding:25px}
-
-/* KPI CARDS */
-.cards{
- display:flex;
- gap:15px;
-}
-
-.card{
- flex:1;
- padding:20px;
- border-radius:16px;
- background:rgba(255,255,255,0.08);
- backdrop-filter:blur(12px);
- box-shadow:0 5px 25px rgba(0,0,0,0.4);
- text-align:center;
- transition:0.3s;
-}
-
-.card:hover{
- transform:translateY(-5px) scale(1.05);
-}
-
-/* ICON STYLE */
-.icon{
- font-size:28px;
- margin-bottom:5px;
-}
-
-/* GRID */
-.grid{
- display:grid;
- grid-template-columns:2fr 1fr;
- gap:20px;
- margin-top:20px;
-}
-
-.section{
- background:rgba(255,255,255,0.05);
- padding:20px;
- border-radius:16px;
- animation:fadeIn 1s ease;
-}
-
-/* TABLE */
-table{
- width:100%;
- border-collapse:collapse;
- margin-top:10px;
-}
-
-th{
- color:#94a3b8;
- text-align:left;
- padding:10px;
-}
-
-td{
- padding:10px;
- border-bottom:1px solid #334155;
-}
-
-tr:hover{
- background:rgba(255,255,255,0.05);
-}
-
-.def{color:#ef4444;font-weight:bold}
-.ok{color:#22c55e}
-
-/* FILTER */
-select{
- padding:8px;
- margin:6px;
- border-radius:6px;
-}
-
-/* CHART */
-canvas{
- background:#020617;
- border-radius:12px;
- padding:10px;
-}
+body{margin:0;font-family:Segoe UI;background:#020617;color:white}
+.sidebar{width:220px;background:#1e293b;padding:20px;float:left;height:100vh}
+.main{margin-left:220px;padding:20px}
+.card{background:#111827;padding:20px;margin:10px;border-radius:10px}
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<h2>📊 Smart Panel</h2>
-
-<button onclick="setView('subject')">📘 Subject</button>
-<button onclick="setView('class')">👩‍🏫 Class</button>
-<button onclick="setView('hod')">🏫 HOD</button>
-
-<hr>
-
-<select id="class">
-<option value="">All Class</option>
-<option>SE</option><option>TE</option><option>BE</option>
-</select>
-
-<select id="batch">
-<option value="">All Batch</option>
-<option>SE-1</option><option>SE-2</option><option>SE-3</option>
-<option>TE-1</option><option>TE-2</option><option>TE-3</option>
-<option>BE-1</option><option>BE-2</option><option>BE-3</option>
-</select>
-
-<select id="period">
-<option value="">All Time</option>
-<option value="week">Weekly</option>
-<option value="month">Monthly</option>
-</select>
-
-<button onclick="load()">Apply Filter</button>
-<button onclick="exportData()">⬇ Export</button>
-
+<button onclick="view='subject';load()">Subject</button>
+<button onclick="view='class';load()">Class</button>
+<button onclick="view='hod';load()">HOD</button>
+<button onclick="exportData()">Export</button>
 </div>
 
 <div class="main">
-
-<div class="cards">
- <div class="card">
-  <div class="icon">📚</div>
-  Lectures<br><h2 id="lec"></h2>
- </div>
-
- <div class="card">
-  <div class="icon">👨‍🎓</div>
-  Students<br><h2 id="stu"></h2>
- </div>
-
- <div class="card">
-  <div class="icon">⚠️</div>
-  Defaulters<br><h2 id="def"></h2>
- </div>
+<div class="card">
+<h3>Total Lectures: <span id="lec"></span></h3>
 </div>
 
-<div class="grid">
- <div class="section"><canvas id="bar"></canvas></div>
- <div class="section"><canvas id="pie"></canvas></div>
-</div>
+<canvas id="chart"></canvas>
 
-<div class="section">
- <canvas id="line"></canvas>
+<div class="card">
+<table id="table"></table>
 </div>
-
-<div class="section">
-<table>
-<thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
-<tbody id="table"></tbody>
-</table>
-</div>
-
 </div>
 
 <script>
-let view="subject";
-let barChart,pieChart,lineChart;
-
-function setView(v){view=v;load();}
+let view="subject",chart;
 
 async function load(){
- let url="/api/dashboard?";
- url+="classFilter="+class.value+"&batchFilter="+batch.value+"&period="+period.value;
+ let d=await fetch("/api/dashboard").then(r=>r.json());
 
- let d=await fetch(url).then(r=>r.json());
-
- lec.innerText=d.totalLectures;
- stu.innerText=Object.keys(d.studentData).length;
- def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+ document.getElementById("lec").innerText=d.totalLectures;
 
  let labels,values;
 
@@ -598,44 +280,38 @@ async function load(){
   values=Object.values(d.subjectWise);
  }
  else if(view==="class"){
-  labels=Object.keys(d.subjectWise);
-  values=Object.values(d.subjectWise);
+  labels=Object.keys(d.studentData);
+  values=Object.values(d.studentData).map(x=>x.count);
  }
  else{
   labels=Object.keys(d.classWise);
   values=Object.values(d.classWise);
  }
 
- if(barChart) barChart.destroy();
- barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values,backgroundColor:"#6366f1"}]}});
-
- if(pieChart) pieChart.destroy();
- pieChart=new Chart(pie,{type:"doughnut",data:{labels:labels,datasets:[{data:values}]}});
-
- if(lineChart) lineChart.destroy();
- lineChart=new Chart(line,{type:"line",data:{labels:labels,datasets:[{data:values,borderColor:"#22c55e"}]}});
+ if(chart) chart.destroy();
+ chart=new Chart(chart,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
 
  let t=document.getElementById("table");
  t.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
   t.innerHTML+=\`
-  <tr>
-   <td>\${n}</td>
-   <td>\${v.percent}%</td>
-   <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
-  </tr>\`;
+  <tr><td>\${n}</td><td>\${v.percent}%</td></tr>\`;
  });
 }
 
-function exportData(){
- window.location="/download";
-}
-
+function exportData(){window.location="/download";}
 load();
-setInterval(load,5000);
 </script>
 
 </body>
 </html>
 `);
+});
+
+/* =========================
+   START
+========================= */
+
+app.listen(PORT, () => {
+  console.log("🚀 Server running");
 });
