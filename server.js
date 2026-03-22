@@ -1,3 +1,6 @@
+/* =========================
+   IMPORTS
+========================= */
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
@@ -9,7 +12,6 @@ const PORT = process.env.PORT || 10000;
 /* =========================
    DATABASE SETUP
 ========================= */
-
 const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
 
@@ -30,7 +32,6 @@ if (!fs.existsSync(csvPath)) {
 /* =========================
    LOAD CSV
 ========================= */
-
 function loadCSV(file) {
   const data = fs.readFileSync(path.join(__dirname, file), "utf8");
   const lines = data.trim().split(/\r?\n/);
@@ -51,7 +52,6 @@ const timetable = loadCSV("Time_Table.csv");
 /* =========================
    HELPERS
 ========================= */
-
 function normalize(v) {
   return v?.toString().trim().toUpperCase();
 }
@@ -107,13 +107,11 @@ function getActiveSlot(day, time, identity) {
 /* =========================
    ROUTES
 ========================= */
-
 app.get("/", (req,res)=>res.send("RFID Running"));
 
 /* =========================
    LOG ROUTE (UNCHANGED)
 ========================= */
-
 app.get("/log",(req,res)=>{
   const card=req.query.card_no;
   if(!card) return res.send("NO_CARD");
@@ -142,53 +140,18 @@ app.get("/log",(req,res)=>{
 /* =========================
    DOWNLOAD
 ========================= */
-
 app.get("/download",(req,res)=>res.download(csvPath));
 
 /* =========================
-   LOGIN
+   API (FIXED)
 ========================= */
-
-app.get("/login",(req,res)=>{
-res.send(`
-<h2 style="text-align:center">Login</h2>
-<div style="text-align:center">
-<select id="role">
-<option value="subject">Subject Teacher</option>
-<option value="class">Class Teacher</option>
-<option value="hod">HOD</option>
-</select><br><br>
-
-<input id="pass" type="password"><br><br>
-<button onclick="go()">Login</button>
-</div>
-
-<script>
-function go(){
- if(pass.value==="1234") location="/dashboard";
- else alert("Wrong");
-}
-</script>
-`);
-});
-
-/* =========================
-   DASHBOARD API (FIXED)
-========================= */
-
 app.get("/api/dashboard",(req,res)=>{
-
  const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
  let records=data.map(l=>{
   let p=l.split(",");
   if(p.length<8) return null;
-  return {
-    date:p[0],
-    name:p[3],
-    className:p[5],
-    subject:p[7]
-  };
+  return {date:p[0],name:p[3],className:p[5],subject:p[7]};
  }).filter(x=>x && x.name);
 
  let student={},subjectWise={},classWise={};
@@ -211,9 +174,8 @@ app.get("/api/dashboard",(req,res)=>{
 });
 
 /* =========================
-   DASHBOARD UI (PREMIUM)
+   DASHBOARD UI (FIXED)
 ========================= */
-
 app.get("/dashboard",(req,res)=>{
 res.send(`
 <!DOCTYPE html>
@@ -222,13 +184,13 @@ res.send(`
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;display:flex;font-family:Segoe UI;background:#020617;color:white}
-.sidebar{width:230px;background:#1e293b;padding:20px}
+body{margin:0;font-family:Segoe UI;background:#020617;color:white;display:flex}
+.sidebar{width:220px;background:#1e293b;padding:20px}
 .sidebar button{width:100%;margin:6px;padding:12px;background:#6366f1;border:none;color:white;border-radius:8px}
 .main{flex:1;padding:20px}
 
 .cards{display:flex;gap:15px}
-.card{flex:1;padding:20px;border-radius:12px;background:rgba(255,255,255,0.08);text-align:center}
+.card{flex:1;padding:20px;border-radius:12px;background:#111827;text-align:center}
 
 .grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
 
@@ -297,13 +259,22 @@ async function load(){
  }
 
  if(barChart) barChart.destroy();
- barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
+ barChart=new Chart(document.getElementById("bar"),{
+  type:"bar",
+  data:{labels:labels,datasets:[{data:values}]}
+ });
 
  if(pieChart) pieChart.destroy();
- pieChart=new Chart(pie,{type:"doughnut",data:{labels:labels,datasets:[{data:values}]}});
+ pieChart=new Chart(document.getElementById("pie"),{
+  type:"doughnut",
+  data:{labels:labels,datasets:[{data:values}]}
+ });
 
  if(lineChart) lineChart.destroy();
- lineChart=new Chart(line,{type:"line",data:{labels:labels,datasets:[{data:values}]}});
+ lineChart=new Chart(document.getElementById("line"),{
+  type:"line",
+  data:{labels:labels,datasets:[{data:values}]}
+ });
 
  let t=document.getElementById("table");
  t.innerHTML="";
@@ -326,5 +297,4 @@ load();
 /* =========================
    START
 ========================= */
-
-app.listen(PORT,()=>console.log("Server running"));
+app.listen(PORT,()=>console.log("🚀 Server running"));
