@@ -16,22 +16,19 @@ const csvPath = path.join(__dirname, "attendance.csv");
 const db = new sqlite3.Database(dbPath);
 
 db.run(`
-  CREATE TABLE IF NOT EXISTS attendance (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    card_no TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`);
+CREATE TABLE IF NOT EXISTS attendance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_no TEXT,
+  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
 
 if (!fs.existsSync(csvPath)) {
-  fs.writeFileSync(
-    csvPath,
-    "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n"
-  );
+  fs.writeFileSync(csvPath,
+    "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
 }
 
 /* =========================
-   LOAD CSV FILES
+   LOAD CSV
 ========================= */
 
 function loadCSV(file) {
@@ -65,29 +62,22 @@ function timeToMinutes(t) {
 }
 
 function identifyCard(cardNo) {
-  const student = students.find(
-    s => normalize(s.card_no) === normalize(cardNo)
-  );
+  const student = students.find(s => normalize(s.card_no) === normalize(cardNo));
   if (student) return { type: "STUDENT", data: student };
 
-  const staff = staffMaster.find(
-    s => normalize(s.staff_card_no) === normalize(cardNo)
-  );
+  const staff = staffMaster.find(s => normalize(s.staff_card_no) === normalize(cardNo));
   if (staff) return { type: "STAFF", data: staff };
 
   return { type: "UNKNOWN", data: null };
 }
 
 function getIndianTime() {
-  const utc = new Date();
-  const ist = new Date(utc.getTime() + (5.5 * 60 * 60 * 1000));
+  const d = new Date(new Date().getTime() + 19800000);
   const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-
   return {
-    date: ist.toISOString().slice(0, 10),
-    time: ist.toTimeString().slice(0, 5),
-    day: days[ist.getDay()],
-    hour: ist.getHours()
+    date: d.toISOString().slice(0,10),
+    time: d.toTimeString().slice(0,5),
+    day: days[d.getDay()]
   };
 }
 
@@ -103,13 +93,7 @@ function getActiveSlot(day, time, identity) {
     if (nowMin < startMin || nowMin > endMin) return false;
 
     if (identity.type === "STUDENT") {
-      return (
-        normalize(slot.class) === normalize(identity.data.class) &&
-        (
-          normalize(slot.batch) === normalize(identity.data.batch) ||
-          normalize(slot.batch) === "ALL"
-        )
-      );
+      return normalize(slot.class) === normalize(identity.data.class);
     }
 
     if (identity.type === "STAFF") {
@@ -124,46 +108,33 @@ function getActiveSlot(day, time, identity) {
    ROUTES
 ========================= */
 
-app.get("/", (req, res) => {
-  res.send("RFID Server Running");
-});
+app.get("/", (req,res)=>res.send("RFID Running"));
 
 /* =========================
    LOG ROUTE (UNCHANGED)
 ========================= */
 
-app.get("/log", (req, res) => {
+app.get("/log",(req,res)=>{
+  const card=req.query.card_no;
+  if(!card) return res.send("NO_CARD");
 
-  const cardNo = req.query.card_no;
+  const id=identifyCard(card);
+  const {date,time,day}=getIndianTime();
 
-  if (!cardNo) return res.send("NO_CARD");
+  const slot=getActiveSlot(day,time,id);
+  if(!slot) return res.send("NO_SLOT");
 
-  const identity = identifyCard(cardNo);
+  db.run(`INSERT INTO attendance (card_no) VALUES (?)`,[normalize(card)]);
 
-  const { date, time, day } = getIndianTime();
-
-  const slot = getActiveSlot(day, time, identity);
-
-  if (!slot) return res.send("NO_SLOT");
-
-  db.run(`INSERT INTO attendance (card_no) VALUES (?)`, [normalize(cardNo)]);
-
-  const csvLine = [
-    date,
-    time,
-    identity.type,
-    identity.type === "STUDENT"
-      ? identity.data.student_name
-      : identity.data?.staff_name || "UNKNOWN",
-    normalize(cardNo),
+  const csv=[date,time,id.type,
+    id.data?.student_name || id.data?.staff_name || "UNKNOWN",
+    card,
     slot.class,
-    identity.type === "STUDENT"
-      ? identity.data.batch
-      : slot.batch,
+    id.data?.batch || slot.batch,
     slot.subject
-  ].join(",") + "\n";
+  ].join(",")+"\n";
 
-  fs.appendFileSync(csvPath, csvLine);
+  fs.appendFileSync(csvPath,csv);
 
   res.send("OK");
 });
@@ -172,62 +143,75 @@ app.get("/log", (req, res) => {
    DOWNLOAD
 ========================= */
 
-app.get("/download", (req, res) => {
-  res.download(csvPath);
-});
+app.get("/download",(req,res)=>res.download(csvPath));
 
 /* =========================
-   API (FIXED)
+   LOGIN
 ========================= */
 
-app.get("/api/dashboard", (req, res) => {
+app.get("/login",(req,res)=>{
+res.send(`
+<h2 style="text-align:center">Login</h2>
+<div style="text-align:center">
+<select id="role">
+<option value="subject">Subject Teacher</option>
+<option value="class">Class Teacher</option>
+<option value="hod">HOD</option>
+</select><br><br>
 
-  const data = fs.readFileSync(csvPath, "utf8");
-  const lines = data.trim().split(/\r?\n/).slice(1);
+<input id="pass" type="password"><br><br>
+<button onclick="go()">Login</button>
+</div>
 
-  let records = lines.map(l => {
-    const parts = l.split(",");
-    if (parts.length < 8) return null;
-
-    return {
-      date: parts[0],
-      name: parts[3],
-      className: parts[5],
-      batch: parts[6],
-      subject: parts[7]
-    };
-  }).filter(x => x && x.name);
-
-  let student = {}, subjectWise = {}, classWise = {};
-
-  records.forEach(r => {
-    student[r.name] = (student[r.name] || 0) + 1;
-    subjectWise[r.subject] = (subjectWise[r.subject] || 0) + 1;
-    classWise[r.className] = (classWise[r.className] || 0) + 1;
-  });
-
-  let totalLectures = [...new Set(records.map(r => r.date + r.subject))].length;
-
-  let studentData = {};
-  Object.keys(student).forEach(n => {
-    let p = (student[n] / totalLectures) * 100;
-    studentData[n] = {
-      count: student[n],
-      percent: p.toFixed(1),
-      def: p < 75
-    };
-  });
-
-  res.json({
-    totalLectures,
-    studentData,
-    subjectWise,
-    classWise
-  });
+<script>
+function go(){
+ if(pass.value==="1234") location="/dashboard";
+ else alert("Wrong");
+}
+</script>
+`);
 });
 
 /* =========================
-   DASHBOARD UI
+   DASHBOARD API (FIXED)
+========================= */
+
+app.get("/api/dashboard",(req,res)=>{
+
+ const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
+
+ let records=data.map(l=>{
+  let p=l.split(",");
+  if(p.length<8) return null;
+  return {
+    date:p[0],
+    name:p[3],
+    className:p[5],
+    subject:p[7]
+  };
+ }).filter(x=>x && x.name);
+
+ let student={},subjectWise={},classWise={};
+
+ records.forEach(r=>{
+  student[r.name]=(student[r.name]||0)+1;
+  subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
+  classWise[r.className]=(classWise[r.className]||0)+1;
+ });
+
+ let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+
+ let studentData={};
+ Object.keys(student).forEach(n=>{
+  let p=(student[n]/totalLectures)*100;
+  studentData[n]={count:student[n],percent:p.toFixed(1),def:p<75};
+ });
+
+ res.json({totalLectures,studentData,subjectWise,classWise});
+});
+
+/* =========================
+   DASHBOARD UI (PREMIUM)
 ========================= */
 
 app.get("/dashboard",(req,res)=>{
@@ -236,11 +220,23 @@ res.send(`
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
-body{margin:0;font-family:Segoe UI;background:#020617;color:white}
-.sidebar{width:220px;background:#1e293b;padding:20px;float:left;height:100vh}
-.main{margin-left:220px;padding:20px}
-.card{background:#111827;padding:20px;margin:10px;border-radius:10px}
+body{margin:0;display:flex;font-family:Segoe UI;background:#020617;color:white}
+.sidebar{width:230px;background:#1e293b;padding:20px}
+.sidebar button{width:100%;margin:6px;padding:12px;background:#6366f1;border:none;color:white;border-radius:8px}
+.main{flex:1;padding:20px}
+
+.cards{display:flex;gap:15px}
+.card{flex:1;padding:20px;border-radius:12px;background:rgba(255,255,255,0.08);text-align:center}
+
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
+
+table{width:100%;border-collapse:collapse}
+td,th{padding:10px;border-bottom:1px solid #334155}
+
+.def{color:red}
+.ok{color:#22c55e}
 </style>
 </head>
 
@@ -254,24 +250,36 @@ body{margin:0;font-family:Segoe UI;background:#020617;color:white}
 </div>
 
 <div class="main">
-<div class="card">
-<h3>Total Lectures: <span id="lec"></span></h3>
+
+<div class="cards">
+<div class="card">Lectures<h2 id="lec"></h2></div>
+<div class="card">Students<h2 id="stu"></h2></div>
+<div class="card">Defaulters<h2 id="def"></h2></div>
 </div>
 
-<canvas id="chart"></canvas>
-
-<div class="card">
-<table id="table"></table>
+<div class="grid">
+<canvas id="bar"></canvas>
+<canvas id="pie"></canvas>
 </div>
+
+<canvas id="line" style="margin-top:20px"></canvas>
+
+<table style="margin-top:20px">
+<tbody id="table"></tbody>
+</table>
+
 </div>
 
 <script>
-let view="subject",chart;
+let view="subject";
+let barChart,pieChart,lineChart;
 
 async function load(){
  let d=await fetch("/api/dashboard").then(r=>r.json());
 
- document.getElementById("lec").innerText=d.totalLectures;
+ lec.innerText=d.totalLectures;
+ stu.innerText=Object.keys(d.studentData).length;
+ def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
 
  let labels,values;
 
@@ -288,18 +296,25 @@ async function load(){
   values=Object.values(d.classWise);
  }
 
- if(chart) chart.destroy();
- chart=new Chart(chart,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
+ if(barChart) barChart.destroy();
+ barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
+
+ if(pieChart) pieChart.destroy();
+ pieChart=new Chart(pie,{type:"doughnut",data:{labels:labels,datasets:[{data:values}]}});
+
+ if(lineChart) lineChart.destroy();
+ lineChart=new Chart(line,{type:"line",data:{labels:labels,datasets:[{data:values}]}});
 
  let t=document.getElementById("table");
  t.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
   t.innerHTML+=\`
-  <tr><td>\${n}</td><td>\${v.percent}%</td></tr>\`;
+  <tr><td>\${n}</td><td>\${v.percent}%</td><td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td></tr>\`;
  });
 }
 
 function exportData(){window.location="/download";}
+
 load();
 </script>
 
@@ -312,6 +327,4 @@ load();
    START
 ========================= */
 
-app.listen(PORT, () => {
-  console.log("🚀 Server running");
-});
+app.listen(PORT,()=>console.log("Server running"));
