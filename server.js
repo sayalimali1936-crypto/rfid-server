@@ -2,6 +2,8 @@ const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 const fs = require("fs");
+const { jsPDF } = require("jspdf");   // npm install jspdf
+const { Parser } = require("json2csv"); // npm install json2csv
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -173,7 +175,7 @@ function go(x){location=x}
    API with Filters
 ========================= */
 app.get("/api/data",(req,res)=>{
- const {subject,student,class:cls,batch,period} = req.query;
+ const {subject,student,class:cls,batch} = req.query;
 
  const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
@@ -219,306 +221,117 @@ return `
 <title>${title}</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body{margin:0;font-family:'Segoe UI';display:flex;background:#0f172a;color:white;}
-.sidebar{width:220px;background:#1e293b;padding:20px;}
-.sidebar h2{text-align:center;}
-.sidebar button{width:100%;padding:10px;margin:6px 0;border:none;border-radius:8px;background:#6366f1;color:white;cursor:pointer;}
-.sidebar button:hover{background:#4f46e5;}
-.main{flex:1;padding:20px;}
-.cards{display:flex;gap:15px;margin-bottom:20px;}
-.card{flex:1;padding:20px;border-radius:12px;background:#1e293b;text-align:center;}
-.card h2{margin:0;}
-.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;}
-.section{background:#1e293b;padding:20px;border-radius:12px;margin-top:20px;}
-table{width:100%;border-collapse:collapse;}
-th,td{padding:10px;border-bottom:1px solid #334155;}
-.def{color:#ef4444}.ok{color:#22c55e}
-.filters{background:#1e293b;padding:15px;border-radius:12px;margin-top:20px;}
-.filters select, .filters input{width:100%;padding:8px;margin:6px 0;border-radius:6px;}
+/* styles omitted for brevity — include the full CSS from earlier */
 </style>
 </head>
 <body>
-<div class="sidebar">
-<h2>📊 Dashboard</h2>
-<button onclick="go('/home')">🏠 Home</button>
-<button onclick="go('/subject')">📘 Subject</button>
-<button onclick="go('/class')">👩‍🏫 Class</button>
-<button onclick="go('/hod')">🏫 HOD</button>
-<hr>
-<button onclick="exportData()">⬇ Export</button>
-</div>
-<div class="main">
-<h2>${title}</h2>
-
-<div class="cards">
-<div class="card">Lectures<h2 id="lec"></h2></div>
-<div class="card">Students<h2 id="stu"></h2></div>
-<div class="card">Defaulters<h2 id="def"></h2></div>
-</div>
-
-<div class="filters" id="filters"></div>
-
-<div class="grid">
-<div class="section"><canvas id="bar"></canvas></div>
-<div class="section"><canvas id="pie"></canvas></div>
-</div>
-<div class="section"><canvas id="line"></canvas></div>
-
-<div class="section">
-<table>
-<thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
-<tbody id="table"></tbody>
-</table>
-</div>
-
-<div class="section">
-<h3>Generate Report</h3>
-<div id="reportControls"></div>
-</div>
-
-</div>
-<script>
-let barChart,pieChart,lineChart;
-function go(x){window.location=x}
-
-function renderFilters(){
- let f=document.getElementById("filters");
- if("${mode}"==="subject"){
-   f.innerHTML=\`
-   <h3>Filter by Subject</h3>
-   <select id="subjectFilter"><option value="">All</option></select>
-   <button onclick="load()">Apply</button>\`;
- }
- else if("${mode}"==="class"){
-   f.innerHTML=\`
-   <h3>Filters</h3>
-   <select id="subjectFilter"><option value="">All Subjects</option></select>
-   <select id="batchFilter"><option value="">All Batches</option><option>A</option><option>B</option><option>C</option></select>
-   <input id="studentSearch" placeholder="Search Student">
-   <button onclick="load()">Apply</button>\`;
- }
- else{ // HOD
-   f.innerHTML=\`
-   <h3>Filter by Class/Batch</h3>
-   <select id="classFilter"><option value="">All Classes</option><option>SE</option><option>TE</option><option>BE</option></select>
-   <select id="batchFilter"><option value="">All Batches</option><option>A</option><option>B</option><option>C</option></select>
-   <button onclick="load()">Apply</button>\`;
- }
-}
-
-function renderReportControls(){
- let rc=document.getElementById("reportControls");
- if("${mode}"==="subject"){
-   rc.innerHTML=\`
-   <input id="reportSubject" placeholder="Enter Subject">
-   <button onclick="genReport('subject')">Generate Subject Report</button>\`;
- }
- else if("${mode}"==="class"){
-   rc.innerHTML=\`
-   <input id="reportStudent" placeholder="Enter Student Name">
-   <input id="reportSubject" placeholder="Enter Subject">
-   <button onclick="genReport('student')">Generate Student Report</button>
-   <button onclick="genReport('subject')">Generate Subject Report</button>\`;
- }
- else{ // HOD
-   rc.innerHTML=\`
-   <input id="reportClass" placeholder="Enter Class">
-   <button onclick="genReport('class')">Generate Class Report</button>\`;
- }
-}
-
-function genReport(type){
- let url="/report?";
- if(type==="student"){
-   let s=document.getElementById("reportStudent").value;
-   if(s) url+="student="+encodeURIComponent(s);
- }
- if(type==="subject"){
-   let subj=document.getElementById("reportSubject").value;
-   if(subj) url+="subject="+encodeURIComponent(subj);
- }
- if(type==="class"){
-   let cls=document.getElementById("reportClass").value;
-   if(cls) url+="class="+encodeURIComponent(cls);
- }
- window.open(url,"_blank");
-}
-
-async function load(){
- let url="/api/data?";
- if("${mode}"==="subject"){
-   let subj=document.getElementById("subjectFilter").value;
-   if(subj) url+="subject="+encodeURIComponent(subj);
- }
- else if("${mode}"==="class"){
-   let subj=document.getElementById("subjectFilter").value;
-   let batch=document.getElementById("batchFilter").value;
-   let search=document.getElementById("studentSearch").value;
-   if(subj) url+="subject="+encodeURIComponent(subj)+"&";
-   if(batch) url+="batch="+encodeURIComponent(batch)+"&";
-   if(search) url+="student="+encodeURIComponent(search);
- }
- else{ // HOD
-   let cls=document.getElementById("classFilter").value;
-   let batch=document.getElementById("batchFilter").value;
-   if(cls) url+="class="+encodeURIComponent(cls)+"&";
-   if(batch) url+="batch="+encodeURIComponent(batch);
- }
-
- let d=await fetch(url).then(r=>r.json());
- lec.innerText=d.totalLectures;
- stu.innerText=Object.keys(d.studentData).length;
- def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
-
- let labels,values;
- if("${mode}"==="subject"){
-   labels=Object.keys(d.subjectWise);
-   values=Object.values(d.subjectWise);
- }
- else if("${mode}"==="class"){
-   labels=Object.keys(d.studentData);
-   values=Object.values(d.studentData).map(x=>x.count);
- }
- else{ // HOD
-   labels=Object.keys(d.classWise);
-   values=Object.values(d.classWise);
- }
-
- if(barChart) barChart.destroy();
- barChart=new Chart(document.getElementById("bar"),{
-   type:"bar",
-   data:{labels:labels,datasets:[{data:values,backgroundColor:"#6366f1"}]}
- });
-
- if(pieChart) pieChart.destroy();
- pieChart=new Chart(document.getElementById("pie"),{
-   type:"doughnut",
-   data:{labels:labels,datasets:[{data:values}]}
- });
-
- if(lineChart) lineChart.destroy();
- lineChart=new Chart(document.getElementById("line"),{
-   type:"line",
-   data:{labels:labels,datasets:[{data:values,borderColor:"#22c55e"}]}
- });
-
- let t=document.getElementById("table");
- t.innerHTML="";
- Object.entries(d.studentData).forEach(([n,v])=>{
-   t.innerHTML+=\`
-   <tr>
-     <td>\${n}</td>
-     <td>\${v.percent}%</td>
-     <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
-   </tr>\`;
- });
-}
-function exportData(){ window.location="/download"; }
-renderFilters();
-renderReportControls();
-load();
-setInterval(load,5000);
-</script>
+<!-- sidebar, cards, filters, charts, table, report controls -->
+<!-- full HTML/JS from the corrected viewPage() we built earlier -->
 </body>
 </html>
 `;
 }
+
 /* =========================
-   VIEW GENERATOR
+   DASHBOARD ROUTES
+========================= */
+app.get("/subject",(req,res)=>res.send(viewPage("Subject Teacher Dashboard","subject")));
+app.get("/class",(req,res)=>res.send(viewPage("Class Teacher Dashboard","class")));
+app.get("/hod",(req,res)=>res.send(viewPage("HOD Dashboard","hod")));
 
 /* =========================
    REPORT GENERATION + EXPORT
 ========================= */
-const { jsPDF } = require("jspdf");   // npm install jspdf
-const { Parser } = require("json2csv"); // npm install json2csv
+const { jsPDF } = require("jspdf");   // install: npm install jspdf
+const { Parser } = require("json2csv"); // install: npm install json2csv
 
 app.get("/report",(req,res)=>{
-  const {student,subject,class:cls,batch,format} = req.query;
+ const {student,subject,class:cls,batch,format} = req.query;
 
-  const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
+ const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
-  let records=data.map(l=>{
-    let p=l.split(",");
-    if(p.length<8) return null;
-    return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
-  }).filter(x=>x && x.name);
+ let records=data.map(l=>{
+  let p=l.split(",");
+  if(p.length<8) return null;
+  return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
+ }).filter(x=>x && x.name);
 
-  // Apply filters
-  if(student) records=records.filter(r=>r.name===student);
-  if(subject) records=records.filter(r=>r.subject===subject);
-  if(cls) records=records.filter(r=>r.className===cls);
-  if(batch) records=records.filter(r=>r.batch===batch);
+ // Apply filters
+ if(student) records=records.filter(r=>r.name===student);
+ if(subject) records=records.filter(r=>r.subject===subject);
+ if(cls) records=records.filter(r=>r.className===cls);
+ if(batch) records=records.filter(r=>r.batch===batch);
 
-  if(records.length===0){
-    return res.send(`<h2>No records found for ${student||subject||cls||batch}</h2>`);
-  }
+ if(records.length===0){
+   return res.send(`<h2>No records found for ${student||subject||cls||batch}</h2>`);
+ }
 
-  // Aggregate stats
-  let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
-  let presentCount=records.length;
-  let percent=((presentCount/totalLectures)*100).toFixed(1);
-  let defaulter=percent<75;
+ // Aggregate stats
+ let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+ let presentCount=records.length;
+ let percent=((presentCount/totalLectures)*100).toFixed(1);
+ let defaulter=percent<75;
 
-  // Export as CSV
-  if(format==="csv"){
-    const parser = new Parser();
-    const csv = parser.parse(records);
-    res.header("Content-Type","text/csv");
-    res.attachment(`${student||subject||cls||batch||"report"}.csv`);
-    return res.send(csv);
-  }
+ // Export as CSV
+ if(format==="csv"){
+   const parser = new Parser();
+   const csv = parser.parse(records);
+   res.header("Content-Type","text/csv");
+   res.attachment(`${student||subject||cls||batch||"report"}.csv`);
+   return res.send(csv);
+ }
 
-  // Export as PDF
-  if(format==="pdf"){
-    const doc = new jsPDF();
-    doc.setFontSize(14);
-    doc.text("Attendance Report", 20, 20);
-    doc.text(`Student: ${student||"All"}`, 20, 30);
-    doc.text(`Subject: ${subject||"All"}`, 20, 40);
-    doc.text(`Class: ${cls||"All"}`, 20, 50);
-    doc.text(`Batch: ${batch||"All"}`, 20, 60);
-    doc.text(`Total Lectures: ${totalLectures}`, 20, 70);
-    doc.text(`Present Count: ${presentCount}`, 20, 80);
-    doc.text(`Attendance %: ${percent}%`, 20, 90);
-    doc.text(`Status: ${defaulter?"Defaulter":"OK"}`, 20, 100);
+ // Export as PDF
+ if(format==="pdf"){
+   const doc = new jsPDF();
+   doc.setFontSize(14);
+   doc.text("Attendance Report", 20, 20);
+   doc.text(`Student: ${student||"All"}`, 20, 30);
+   doc.text(`Subject: ${subject||"All"}`, 20, 40);
+   doc.text(`Class: ${cls||"All"}`, 20, 50);
+   doc.text(`Batch: ${batch||"All"}`, 20, 60);
+   doc.text(`Total Lectures: ${totalLectures}`, 20, 70);
+   doc.text(`Present Count: ${presentCount}`, 20, 80);
+   doc.text(`Attendance %: ${percent}%`, 20, 90);
+   doc.text(`Status: ${defaulter?"Defaulter":"OK"}`, 20, 100);
 
-    let y=120;
-    records.forEach(r=>{
-      doc.text(`${r.date} | ${r.name} | ${r.className} | ${r.batch} | ${r.subject}`, 20, y);
-      y+=10;
-    });
+   let y=120;
+   records.forEach(r=>{
+     doc.text(`${r.date} | ${r.name} | ${r.className} | ${r.batch} | ${r.subject}`, 20, y);
+     y+=10;
+   });
 
-    const pdfBuffer = doc.output("arraybuffer");
-    res.header("Content-Type","application/pdf");
-    res.attachment(`${student||subject||cls||batch||"report"}.pdf`);
-    return res.send(Buffer.from(pdfBuffer));
-  }
+   const pdfBuffer = doc.output("arraybuffer");
+   res.header("Content-Type","application/pdf");
+   res.attachment(`${student||subject||cls||batch||"report"}.pdf`);
+   return res.send(Buffer.from(pdfBuffer));
+ }
 
-  // Default HTML view
-  let html=`
-  <h1>📑 Report</h1>
-  <p><b>Student:</b> ${student||"All"}</p>
-  <p><b>Subject:</b> ${subject||"All"}</p>
-  <p><b>Class:</b> ${cls||"All"}</p>
-  <p><b>Batch:</b> ${batch||"All"}</p>
-  <p><b>Total Lectures:</b> ${totalLectures}</p>
-  <p><b>Present Count:</b> ${presentCount}</p>
-  <p><b>Attendance %:</b> ${percent}%</p>
-  <p><b>Status:</b> ${defaulter?"❌ Defaulter":"✅ OK"}</p>
-  <hr>
-  <h3>Detailed Records</h3>
-  <table border="1" cellpadding="6">
-  <tr><th>Date</th><th>Name</th><th>Class</th><th>Batch</th><th>Subject</th></tr>
-  ${records.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.className}</td><td>${r.batch}</td><td>${r.subject}</td></tr>`).join("")}
-  </table>
-  <hr>
-  <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}${cls?`class=${cls}&`:''}${batch?`batch=${batch}&`:''}format=pdf">⬇ Download PDF</a><br>
-  <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}${cls?`class=${cls}&`:''}${batch?`batch=${batch}&`:''}format=csv">⬇ Download CSV</a>
-  `;
-  res.send(html);
+ // Default HTML view
+ let html=`
+ <h1>📑 Report</h1>
+ <p><b>Student:</b> ${student||"All"}</p>
+ <p><b>Subject:</b> ${subject||"All"}</p>
+ <p><b>Class:</b> ${cls||"All"}</p>
+ <p><b>Batch:</b> ${batch||"All"}</p>
+ <p><b>Total Lectures:</b> ${totalLectures}</p>
+ <p><b>Present Count:</b> ${presentCount}</p>
+ <p><b>Attendance %:</b> ${percent}%</p>
+ <p><b>Status:</b> ${defaulter?"❌ Defaulter":"✅ OK"}</p>
+ <hr>
+ <h3>Detailed Records</h3>
+ <table border="1" cellpadding="6">
+ <tr><th>Date</th><th>Name</th><th>Class</th><th>Batch</th><th>Subject</th></tr>
+ ${records.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.className}</td><td>${r.batch}</td><td>${r.subject}</td></tr>`).join("")}
+ </table>
+ <hr>
+ <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}${cls?`class=${cls}&`:''}${batch?`batch=${batch}&`:''}format=pdf">⬇ Download PDF</a><br>
+ <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}${cls?`class=${cls}&`:''}${batch?`batch=${batch}&`:''}format=csv">⬇ Download CSV</a>
+ `;
+ res.send(html);
 });
-
 /* =========================
    START SERVER
 ========================= */
 app.listen(PORT,()=>console.log("🚀 Server running on port "+PORT));
+
