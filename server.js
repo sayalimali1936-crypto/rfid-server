@@ -424,137 +424,101 @@ setInterval(load,5000);
 `;
 }
 /* =========================
-   REPORT GENERATION
-========================= */
-app.get("/report",(req,res)=>{
- const {student,subject} = req.query;
+   VIEW GENERATOR
 
- const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
-
- let records=data.map(l=>{
-  let p=l.split(",");
-  if(p.length<8) return null;
-  return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
- }).filter(x=>x && x.name);
-
- // Filter by student or subject
- if(student) records=records.filter(r=>r.name===student);
- if(subject) records=records.filter(r=>r.subject===subject);
-
- if(records.length===0){
-   return res.send(`<h2>No records found for ${student||subject}</h2>`);
- }
-
- // Aggregate stats
- let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
- let presentCount=records.length;
- let percent=((presentCount/totalLectures)*100).toFixed(1);
-
- // Defaulter check
- let defaulter=percent<75;
-
- // Build HTML report
- let html=`
- <h1>📑 Report</h1>
- <p><b>Student:</b> ${student||"All"}</p>
- <p><b>Subject:</b> ${subject||"All"}</p>
- <p><b>Total Lectures:</b> ${totalLectures}</p>
- <p><b>Present Count:</b> ${presentCount}</p>
- <p><b>Attendance %:</b> ${percent}%</p>
- <p><b>Status:</b> ${defaulter?"❌ Defaulter":"✅ OK"}</p>
- <hr>
- <h3>Detailed Records</h3>
- <table border="1" cellpadding="6">
- <tr><th>Date</th><th>Name</th><th>Class</th><th>Batch</th><th>Subject</th></tr>
- ${records.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.className}</td><td>${r.batch}</td><td>${r.subject}</td></tr>`).join("")}
- </table>
- `;
-
- res.send(html);
-});
 /* =========================
    REPORT GENERATION + EXPORT
 ========================= */
-const { jsPDF } = require("jspdf"); // install with: npm install jspdf
-const { Parser } = require("json2csv"); // install with: npm install json2csv
+const { jsPDF } = require("jspdf");   // npm install jspdf
+const { Parser } = require("json2csv"); // npm install json2csv
 
 app.get("/report",(req,res)=>{
- const {student,subject,format} = req.query;
+  const {student,subject,class:cls,batch,format} = req.query;
 
- const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
+  const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
- let records=data.map(l=>{
-  let p=l.split(",");
-  if(p.length<8) return null;
-  return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
- }).filter(x=>x && x.name);
+  let records=data.map(l=>{
+    let p=l.split(",");
+    if(p.length<8) return null;
+    return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
+  }).filter(x=>x && x.name);
 
- // Apply filters
- if(student) records=records.filter(r=>r.name===student);
- if(subject) records=records.filter(r=>r.subject===subject);
+  // Apply filters
+  if(student) records=records.filter(r=>r.name===student);
+  if(subject) records=records.filter(r=>r.subject===subject);
+  if(cls) records=records.filter(r=>r.className===cls);
+  if(batch) records=records.filter(r=>r.batch===batch);
 
- if(records.length===0){
-   return res.send(`<h2>No records found for ${student||subject}</h2>`);
- }
+  if(records.length===0){
+    return res.send(`<h2>No records found for ${student||subject||cls||batch}</h2>`);
+  }
 
- // Aggregate stats
- let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
- let presentCount=records.length;
- let percent=((presentCount/totalLectures)*100).toFixed(1);
- let defaulter=percent<75;
+  // Aggregate stats
+  let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length;
+  let presentCount=records.length;
+  let percent=((presentCount/totalLectures)*100).toFixed(1);
+  let defaulter=percent<75;
 
- // Export as CSV
- if(format==="csv"){
-   const parser = new Parser();
-   const csv = parser.parse(records);
-   res.header("Content-Type","text/csv");
-   res.attachment(`${student||subject||"report"}.csv`);
-   return res.send(csv);
- }
+  // Export as CSV
+  if(format==="csv"){
+    const parser = new Parser();
+    const csv = parser.parse(records);
+    res.header("Content-Type","text/csv");
+    res.attachment(`${student||subject||cls||batch||"report"}.csv`);
+    return res.send(csv);
+  }
 
- // Export as PDF
- if(format==="pdf"){
-   const doc = new jsPDF();
-   doc.setFontSize(14);
-   doc.text("Attendance Report", 20, 20);
-   doc.text(`Student: ${student||"All"}`, 20, 30);
-   doc.text(`Subject: ${subject||"All"}`, 20, 40);
-   doc.text(`Total Lectures: ${totalLectures}`, 20, 50);
-   doc.text(`Present Count: ${presentCount}`, 20, 60);
-   doc.text(`Attendance %: ${percent}%`, 20, 70);
-   doc.text(`Status: ${defaulter?"Defaulter":"OK"}`, 20, 80);
+  // Export as PDF
+  if(format==="pdf"){
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text("Attendance Report", 20, 20);
+    doc.text(`Student: ${student||"All"}`, 20, 30);
+    doc.text(`Subject: ${subject||"All"}`, 20, 40);
+    doc.text(`Class: ${cls||"All"}`, 20, 50);
+    doc.text(`Batch: ${batch||"All"}`, 20, 60);
+    doc.text(`Total Lectures: ${totalLectures}`, 20, 70);
+    doc.text(`Present Count: ${presentCount}`, 20, 80);
+    doc.text(`Attendance %: ${percent}%`, 20, 90);
+    doc.text(`Status: ${defaulter?"Defaulter":"OK"}`, 20, 100);
 
-   let y=100;
-   records.forEach(r=>{
-     doc.text(`${r.date} | ${r.name} | ${r.className} | ${r.batch} | ${r.subject}`, 20, y);
-     y+=10;
-   });
+    let y=120;
+    records.forEach(r=>{
+      doc.text(`${r.date} | ${r.name} | ${r.className} | ${r.batch} | ${r.subject}`, 20, y);
+      y+=10;
+    });
 
-   const pdfBuffer = doc.output("arraybuffer");
-   res.header("Content-Type","application/pdf");
-   res.attachment(`${student||subject||"report"}.pdf`);
-   return res.send(Buffer.from(pdfBuffer));
- }
+    const pdfBuffer = doc.output("arraybuffer");
+    res.header("Content-Type","application/pdf");
+    res.attachment(`${student||subject||cls||batch||"report"}.pdf`);
+    return res.send(Buffer.from(pdfBuffer));
+  }
 
- // Default: HTML view
- let html=`
- <h1>📑 Report</h1>
- <p><b>Student:</b> ${student||"All"}</p>
- <p><b>Subject:</b> ${subject||"All"}</p>
- <p><b>Total Lectures:</b> ${totalLectures}</p>
- <p><b>Present Count:</b> ${presentCount}</p>
- <p><b>Attendance %:</b> ${percent}%</p>
- <p><b>Status:</b> ${defaulter?"❌ Defaulter":"✅ OK"}</p>
- <hr>
- <h3>Detailed Records</h3>
- <table border="1" cellpadding="6">
- <tr><th>Date</th><th>Name</th><th>Class</th><th>Batch</th><th>Subject</th></tr>
- ${records.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.className}</td><td>${r.batch}</td><td>${r.subject}</td></tr>`).join("")}
- </table>
- <hr>
- <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}format=pdf">⬇ Download PDF</a><br>
- <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}format=csv">⬇ Download CSV</a>
- `;
-
- res.send(html);
+  // Default HTML view
+  let html=`
+  <h1>📑 Report</h1>
+  <p><b>Student:</b> ${student||"All"}</p>
+  <p><b>Subject:</b> ${subject||"All"}</p>
+  <p><b>Class:</b> ${cls||"All"}</p>
+  <p><b>Batch:</b> ${batch||"All"}</p>
+  <p><b>Total Lectures:</b> ${totalLectures}</p>
+  <p><b>Present Count:</b> ${presentCount}</p>
+  <p><b>Attendance %:</b> ${percent}%</p>
+  <p><b>Status:</b> ${defaulter?"❌ Defaulter":"✅ OK"}</p>
+  <hr>
+  <h3>Detailed Records</h3>
+  <table border="1" cellpadding="6">
+  <tr><th>Date</th><th>Name</th><th>Class</th><th>Batch</th><th>Subject</th></tr>
+  ${records.map(r=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${r.className}</td><td>${r.batch}</td><td>${r.subject}</td></tr>`).join("")}
+  </table>
+  <hr>
+  <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}${cls?`class=${cls}&`:''}${batch?`batch=${batch}&`:''}format=pdf">⬇ Download PDF</a><br>
+  <a href="/report?${student?`student=${student}&`:''}${subject?`subject=${subject}&`:''}${cls?`class=${cls}&`:''}${batch?`batch=${batch}&`:''}format=csv">⬇ Download CSV</a>
+  `;
+  res.send(html);
 });
+
+/* =========================
+   START SERVER
+========================= */
+app.listen(PORT,()=>console.log("🚀 Server running on port "+PORT));
