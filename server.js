@@ -181,119 +181,108 @@ res.send(`
 <!DOCTYPE html>
 <html>
 <head>
+<title>Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;font-family:Segoe UI;background:#020617;color:white;display:flex}
-.sidebar{width:220px;background:#1e293b;padding:20px}
-.sidebar button{width:100%;margin:6px;padding:12px;background:#6366f1;border:none;color:white;border-radius:8px}
-.main{flex:1;padding:20px}
+body{margin:0;font-family:Arial;background:#0f172a;color:white}
+.sidebar{width:200px;position:fixed;height:100%;background:#1e293b;padding:10px}
+.sidebar button{width:100%;margin:5px;padding:10px;background:#3b82f6;border:none;color:white}
+.main{margin-left:210px;padding:20px}
 
-.cards{display:flex;gap:15px}
-.card{flex:1;padding:20px;border-radius:12px;background:#111827;text-align:center}
-
-.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
-
-table{width:100%;border-collapse:collapse}
-td,th{padding:10px;border-bottom:1px solid #334155}
-
-.def{color:red}
-.ok{color:#22c55e}
+.card{background:#1e293b;padding:20px;margin:10px;border-radius:10px;display:inline-block}
+canvas{background:white;border-radius:10px;margin-top:20px}
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<button onclick="view='subject';load()">Subject</button>
-<button onclick="view='class';load()">Class</button>
-<button onclick="view='hod';load()">HOD</button>
+<button onclick="load()">Refresh</button>
 <button onclick="exportData()">Export</button>
 </div>
 
 <div class="main">
 
-<div class="cards">
-<div class="card">Lectures<h2 id="lec"></h2></div>
-<div class="card">Students<h2 id="stu"></h2></div>
-<div class="card">Defaulters<h2 id="def"></h2></div>
+<div>
+<div class="card">Lectures: <span id="lec">0</span></div>
+<div class="card">Students: <span id="stu">0</span></div>
+<div class="card">Defaulters: <span id="def">0</span></div>
 </div>
 
-<div class="grid">
-<canvas id="bar"></canvas>
-<canvas id="pie"></canvas>
-</div>
+<canvas id="bar" height="100"></canvas>
 
-<canvas id="line" style="margin-top:20px"></canvas>
-
-<table style="margin-top:20px">
+<table border="1" style="margin-top:20px;width:100%;background:white;color:black">
+<thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
 <tbody id="table"></tbody>
 </table>
 
 </div>
 
 <script>
-let view="subject";
-let barChart,pieChart,lineChart;
 
 async function load(){
- let d=await fetch("/api/dashboard").then(r=>r.json());
+ try{
+  console.log("Loading dashboard...");
 
- lec.innerText=d.totalLectures;
- stu.innerText=Object.keys(d.studentData).length;
- def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+  const res = await fetch("/api/dashboard");
+  const data = await res.json();
 
- let labels,values;
+  console.log(data);
 
- if(view==="subject"){
-  labels=Object.keys(d.subjectWise);
-  values=Object.values(d.subjectWise);
+  if(!data || !data.studentData){
+    alert("No data available");
+    return;
+  }
+
+  document.getElementById("lec").innerText = data.totalLectures || 0;
+  document.getElementById("stu").innerText = Object.keys(data.studentData).length || 0;
+  document.getElementById("def").innerText =
+    Object.values(data.studentData).filter(x=>x.def).length || 0;
+
+  let labels = Object.keys(data.studentData);
+  let values = Object.values(data.studentData).map(x=>x.count);
+
+  const ctx = document.getElementById("bar");
+
+  new Chart(ctx,{
+    type:"bar",
+    data:{
+      labels:labels,
+      datasets:[{data:values}]
+    }
+  });
+
+  let table=document.getElementById("table");
+  table.innerHTML="";
+
+  Object.entries(data.studentData).forEach(([n,v])=>{
+    table.innerHTML += \`
+    <tr>
+      <td>\${n}</td>
+      <td>\${v.percent}%</td>
+      <td>\${v.def ? "Defaulter" : "OK"}</td>
+    </tr>\`;
+  });
+
+ }catch(e){
+  console.error(e);
+  alert("Dashboard error: "+e.message);
  }
- else if(view==="class"){
-  labels=Object.keys(d.studentData);
-  values=Object.values(d.studentData).map(x=>x.count);
- }
- else{
-  labels=Object.keys(d.classWise);
-  values=Object.values(d.classWise);
- }
-
- if(barChart) barChart.destroy();
- barChart=new Chart(document.getElementById("bar"),{
-  type:"bar",
-  data:{labels:labels,datasets:[{data:values}]}
- });
-
- if(pieChart) pieChart.destroy();
- pieChart=new Chart(document.getElementById("pie"),{
-  type:"doughnut",
-  data:{labels:labels,datasets:[{data:values}]}
- });
-
- if(lineChart) lineChart.destroy();
- lineChart=new Chart(document.getElementById("line"),{
-  type:"line",
-  data:{labels:labels,datasets:[{data:values}]}
- });
-
- let t=document.getElementById("table");
- t.innerHTML="";
- Object.entries(d.studentData).forEach(([n,v])=>{
-  t.innerHTML+=\`
-  <tr><td>\${n}</td><td>\${v.percent}%</td><td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td></tr>\`;
- });
 }
 
-function exportData(){window.location="/download";}
+function exportData(){
+ window.location="/download";
+}
 
 load();
+
 </script>
 
 </body>
 </html>
 `);
 });
-
 /* =========================
    START
 ========================= */
