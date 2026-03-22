@@ -197,14 +197,26 @@ res.send(`
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;display:flex;font-family:Segoe UI;background:#020617;color:white}
+body{
+ margin:0;
+ font-family:'Segoe UI';
+ display:flex;
+ background:#0f172a;
+ color:white;
+}
 
 /* SIDEBAR */
 .sidebar{
- width:250px;
+ width:230px;
  background:linear-gradient(#1e293b,#020617);
  padding:20px;
 }
+
+.sidebar h2{
+ text-align:center;
+ margin-bottom:20px;
+}
+
 .sidebar button{
  width:100%;
  padding:12px;
@@ -214,156 +226,209 @@ body{margin:0;display:flex;font-family:Segoe UI;background:#020617;color:white}
  background:#6366f1;
  color:white;
  cursor:pointer;
+ transition:0.3s;
+}
+.sidebar button:hover{
+ background:#4f46e5;
+ transform:translateX(5px);
 }
 
 /* MAIN */
-.main{flex:1;padding:20px}
+.main{
+ flex:1;
+ padding:20px;
+}
 
-/* CARDS */
-.cards{display:flex;gap:15px}
+/* KPI CARDS */
+.kpi{
+ display:flex;
+ gap:15px;
+}
+
 .card{
  flex:1;
- background:rgba(255,255,255,0.08);
  padding:20px;
  border-radius:12px;
+ background:rgba(255,255,255,0.08);
+ backdrop-filter:blur(10px);
+ box-shadow:0 5px 20px rgba(0,0,0,0.3);
  text-align:center;
  transition:0.3s;
 }
 .card:hover{transform:scale(1.05)}
 
-/* SECTIONS */
-.section{
- margin-top:20px;
- background:#0f172a;
- padding:20px;
- border-radius:12px;
-}
+.card h2{margin:10px 0}
 
 /* GRID */
 .grid{
  display:grid;
- grid-template-columns:1fr 1fr;
+ grid-template-columns:2fr 1fr;
  gap:20px;
+ margin-top:20px;
+}
+
+/* FILTER PANEL */
+.filters{
+ width:220px;
+ background:#020617;
+ padding:15px;
+ border-left:1px solid #334155;
+}
+
+select{
+ width:100%;
+ padding:8px;
+ margin:8px 0;
+ border-radius:6px;
 }
 
 /* TABLE */
-table{width:100%;border-collapse:collapse}
-td,th{padding:10px;border-bottom:1px solid #334155}
-.def{color:red}
+table{
+ width:100%;
+ border-collapse:collapse;
+ margin-top:10px;
+}
+th,td{
+ padding:10px;
+ border-bottom:1px solid #334155;
+}
+
+.def{color:#ef4444}
 .ok{color:#22c55e}
 </style>
 </head>
 
 <body>
 
+<!-- SIDEBAR -->
 <div class="sidebar">
 <h2>📊 Dashboard</h2>
 
-<button onclick="view='subject';load()">Subject Teacher</button>
-<button onclick="view='class';load()">Class Teacher</button>
-<button onclick="view='hod';load()">HOD</button>
+<button onclick="setView('subject')">📘 Subject</button>
+<button onclick="setView('class')">👩‍🏫 Class</button>
+<button onclick="setView('hod')">🏫 HOD</button>
 
 <hr>
-<button onclick="exportData()">Export CSV</button>
+<button onclick="exportData()">⬇ Export</button>
 </div>
 
+<!-- MAIN -->
 <div class="main">
 
-<!-- CARDS -->
-<div class="cards">
- <div class="card">Lectures<br><h2 id="lec"></h2></div>
- <div class="card">Students<br><h2 id="stu"></h2></div>
- <div class="card">Defaulters<br><h2 id="def"></h2></div>
+<!-- KPI -->
+<div class="kpi">
+ <div class="card">
+   <h3>📚 Lectures</h3>
+   <h2 id="lec"></h2>
+ </div>
+ <div class="card">
+   <h3>👨‍🎓 Students</h3>
+   <h2 id="stu"></h2>
+ </div>
+ <div class="card">
+   <h3>⚠ Defaulters</h3>
+   <h2 id="def"></h2>
+ </div>
 </div>
 
 <!-- GRAPHS -->
 <div class="grid">
- <div class="section">
-  <canvas id="chart1"></canvas>
+ <div class="card">
+  <canvas id="bar"></canvas>
  </div>
- <div class="section">
-  <canvas id="chart2"></canvas>
+ <div class="card">
+  <canvas id="pie"></canvas>
  </div>
 </div>
 
-<div class="section">
- <canvas id="chart3"></canvas>
+<div class="card" style="margin-top:20px">
+ <canvas id="line"></canvas>
 </div>
 
 <!-- TABLE -->
-<div class="section">
+<div class="card" style="margin-top:20px">
 <table>
+<thead>
 <tr><th>Name</th><th>%</th><th>Status</th></tr>
+</thead>
 <tbody id="table"></tbody>
 </table>
 </div>
 
 </div>
 
+<!-- FILTER PANEL -->
+<div class="filters">
+<h3>Filters</h3>
+
+<select id="class">
+<option value="">All Class</option>
+<option>SE</option>
+<option>TE</option>
+<option>BE</option>
+</select>
+
+<select id="batch">
+<option value="">All Batch</option>
+<option>SE-1</option><option>SE-2</option><option>SE-3</option>
+<option>TE-1</option><option>TE-2</option><option>TE-3</option>
+<option>BE-1</option><option>BE-2</option><option>BE-3</option>
+</select>
+
+<select id="period">
+<option value="">All Time</option>
+<option value="week">Weekly</option>
+<option value="month">Monthly</option>
+</select>
+
+<button onclick="load()">Apply</button>
+</div>
+
 <script>
 let view="subject";
-let c1,c2,c3;
+let barChart,pieChart,lineChart;
+
+function setView(v){
+ view=v;
+ load();
+}
 
 async function load(){
- let d=await fetch("/api/dashboard").then(r=>r.json());
+ let url="/api/dashboard?";
+ url+="classFilter="+document.getElementById("class").value+"&";
+ url+="batchFilter="+document.getElementById("batch").value+"&";
+ url+="period="+document.getElementById("period").value;
+
+ let d=await fetch(url).then(r=>r.json());
 
  document.getElementById("lec").innerText=d.totalLectures;
  document.getElementById("stu").innerText=Object.keys(d.studentData).length;
  document.getElementById("def").innerText=
   Object.values(d.studentData).filter(x=>x.def).length;
 
- let labels1,values1,labels2,values2,labels3,values3;
+ let labels,values;
 
  if(view==="subject"){
-  labels1=Object.keys(d.subject);
-  values1=Object.values(d.subject);
-
-  labels2=Object.keys(d.studentData);
-  values2=Object.values(d.studentData).map(x=>x.percent);
-
-  labels3=Object.keys(d.subject);
-  values3=Object.values(d.subject);
+  labels=Object.keys(d.subject);
+  values=Object.values(d.subject);
  }
-
  else if(view==="class"){
-  labels1=Object.keys(d.subject);
-  values1=Object.values(d.subject);
-
-  labels2=Object.keys(d.studentData);
-  values2=Object.values(d.studentData).map(x=>x.count);
-
-  labels3=Object.keys(d.subject);
-  values3=Object.values(d.subject);
+  labels=Object.keys(d.studentData);
+  values=Object.values(d.studentData).map(x=>x.count);
  }
-
  else{
-  labels1=Object.keys(d.classWise);
-  values1=Object.values(d.classWise);
-
-  labels2=Object.keys(d.classWise);
-  values2=Object.values(d.classWise);
-
-  labels3=Object.keys(d.classWise);
-  values3=Object.values(d.classWise);
+  labels=Object.keys(d.classWise);
+  values=Object.values(d.classWise);
  }
 
- if(c1) c1.destroy();
- c1=new Chart(chart1,{
-  type:"bar",
-  data:{labels:labels1,datasets:[{data:values1}]}
- });
+ if(barChart) barChart.destroy();
+ barChart=new Chart(bar,{type:"bar",data:{labels:labels,datasets:[{data:values}]}});
 
- if(c2) c2.destroy();
- c2=new Chart(chart2,{
-  type:"doughnut",
-  data:{labels:labels2,datasets:[{data:values2}]}
- });
+ if(pieChart) pieChart.destroy();
+ pieChart=new Chart(pie,{type:"doughnut",data:{labels:labels,datasets:[{data:values}]}});
 
- if(c3) c3.destroy();
- c3=new Chart(chart3,{
-  type:"line",
-  data:{labels:labels3,datasets:[{data:values3}]}
- });
+ if(lineChart) lineChart.destroy();
+ lineChart=new Chart(line,{type:"line",data:{labels:labels,datasets:[{data:values}]}});
 
  let t=document.getElementById("table");
  t.innerHTML="";
@@ -389,8 +454,4 @@ setInterval(load,5000);
 </body>
 </html>
 `);
-});/* =========================
-   START SERVER
-========================= */
-
-app.listen(PORT,()=>console.log("Server running"));
+});
