@@ -104,12 +104,10 @@ function getActiveSlot(day,time,identity){
 ========================= */
 app.get("/",(req,res)=>res.send("RFID Running"));
 
-app.get("/dashboard",(req,res)=>{
-  res.redirect("/home");
-});
+app.get("/dashboard",(req,res)=>res.redirect("/home"));
 
 /* =========================
-   LOG (UNCHANGED)
+   LOG
 ========================= */
 app.get("/log",(req,res)=>{
  const card=req.query.card_no;
@@ -142,62 +140,11 @@ app.get("/log",(req,res)=>{
 app.get("/download",(req,res)=>res.download(csvPath));
 
 /* =========================
-   HOME PAGE
-========================= */
-app.get("/home",(req,res)=>{
-res.send(`
-<h1 style="text-align:center">📊 Smart Dashboard</h1>
-<div style="text-align:center">
-<button onclick="go('/login')">Login</button>
-<button onclick="go('/subject')">Subject</button>
-<button onclick="go('/class')">Class</button>
-<button onclick="go('/hod')">HOD</button>
-</div>
-
-<script>
-function go(x){location=x}
-</script>
-`);
-});
-
-/* =========================
-   LOGIN
-========================= */
-app.get("/login",(req,res)=>{
-res.send(`
-<h2 style="text-align:center">🔐 Login</h2>
-<div style="text-align:center">
-<input id="id" placeholder="Staff ID"><br><br>
-<select id="role">
-<option value="teacher">Teacher</option>
-<option value="hod">HOD</option>
-</select><br><br>
-<button onclick="login()">Login</button>
-</div>
-
-<script>
-function login(){
- let id=document.getElementById("id").value;
- let role=document.getElementById("role").value;
-
- if(role==="teacher"){
-  location="/subject?staff="+id;
- }else{
-  location="/hod";
- }
-}
-</script>
-`);
-});
-
-/* =========================
-   SMART API
+   ADVANCED API
 ========================= */
 app.get("/api/data",(req,res)=>{
 
- const {className,batch,subject,period,staff} = req.query;
-
- const data=fs.readFileSync(csvPath,"utf8").split(/\\r?\\n/).slice(1);
+ const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
  let records=data.map(l=>{
   let p=l.split(",");
@@ -205,123 +152,130 @@ app.get("/api/data",(req,res)=>{
 
   return {
     date:p[0],
-    role:p[2],
     name:p[3],
     className:p[5],
-    batch:p[6],
     subject:p[7]
   };
- }).filter(x=>x && x.role==="STUDENT");
+ }).filter(x=>x && x.name);
 
- /* AUTO TEACHER SUBJECT */
- if(staff){
-  let teacherSubjects = timetable
-   .filter(t=>normalize(t.staff_id)===normalize(staff))
-   .map(t=>t.subject);
-
-  if(teacherSubjects.length>0){
-   records = records.filter(r=>teacherSubjects.includes(r.subject));
-  }
- }
-
- if(className) records=records.filter(r=>r.className===className);
- if(batch) records=records.filter(r=>r.batch===batch);
- if(subject) records=records.filter(r=>r.subject===subject);
-
- let now=new Date();
-
- if(period==="week"){
-  let d=new Date(); d.setDate(now.getDate()-7);
-  records=records.filter(r=>new Date(r.date)>=d);
- }
-
- if(period==="month"){
-  let d=new Date(); d.setMonth(now.getMonth()-1);
-  records=records.filter(r=>new Date(r.date)>=d);
- }
-
- let subjectWise={},classWise={},studentWise={},lectureMap={};
+ let lectureMap={},studentWise={},subjectWise={},classWise={};
 
  records.forEach(r=>{
+  lectureMap[r.date+"-"+r.subject]=true;
+  studentWise[r.name]=(studentWise[r.name]||0)+1;
   subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
   classWise[r.className]=(classWise[r.className]||0)+1;
-  studentWise[r.name]=(studentWise[r.name]||0)+1;
-
-  lectureMap[r.date+"-"+r.subject]=true;
  });
 
- let totalLectures=Object.keys(lectureMap).length || 1;
+ let actualLectures=Object.keys(lectureMap).length;
+
+ // EXPECTED FROM TIMETABLE
+ let expectedLectures=timetable.length;
 
  let studentData={};
  Object.keys(studentWise).forEach(n=>{
-  let p=(studentWise[n]/totalLectures)*100;
-  studentData[n]={count:studentWise[n],percent:p.toFixed(1),def:p<75};
+  let percent=(studentWise[n]/actualLectures)*100;
+  studentData[n]={
+    percent:percent.toFixed(1),
+    def:percent<75,
+    shortage:percent<75
+  };
  });
 
- res.json({totalLectures,subjectWise,classWise,studentData});
+ res.json({
+  actualLectures,
+  expectedLectures,
+  studentData,
+  subjectWise,
+  classWise
+ });
 });
 
 /* =========================
-   DASHBOARD UI
+   HOME
 ========================= */
-function viewPage(title,mode){
-return `
-<!DOCTYPE html>
+app.get("/home",(req,res)=>{
+res.send(`
 <html>
 <head>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-body{margin:0;font-family:Segoe UI;background:#0f172a;color:white;display:flex}
-.sidebar{width:220px;background:#1e293b;padding:20px}
-.sidebar button{width:100%;margin:5px;padding:10px;background:#6366f1;border:none;color:white}
-.main{flex:1;padding:20px}
-.card{display:inline-block;margin:10px;padding:20px;background:#111827;border-radius:10px}
-</style>
 </head>
 
-<body>
+<body style="background:#020617;color:white;font-family:Segoe UI">
 
-<div class="sidebar">
-<button onclick="go('/home')">Home</button>
-<button onclick="go('/subject')">Subject</button>
-<button onclick="go('/class')">Class</button>
-<button onclick="go('/hod')">HOD</button>
+<h1>📊 Smart Attendance Dashboard</h1>
+
+<div>
+Lectures: <span id="lec"></span> |
+Expected: <span id="exp"></span>
 </div>
-
-<div class="main">
-
-<div class="card">Lectures <span id="lec"></span></div>
-<div class="card">Students <span id="stu"></span></div>
-<div class="card">Defaulters <span id="def"></span></div>
 
 <canvas id="bar"></canvas>
 
-<table id="table"></table>
-
-</div>
-
 <script>
-function go(x){location=x}
-
 async function load(){
  let d=await fetch("/api/data").then(r=>r.json());
 
- lec.innerText=d.totalLectures;
- stu.innerText=Object.keys(d.studentData).length;
- def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+ lec.innerText=d.actualLectures;
+ exp.innerText=d.expectedLectures;
 
- let labels=Object.keys(d.subjectWise);
- let values=Object.values(d.subjectWise);
-
- new Chart(document.getElementById("bar"),{
+ new Chart(bar,{
   type:"bar",
-  data:{labels,datasets:[{data:values}]}
+  data:{
+   labels:Object.keys(d.classWise),
+   datasets:[{data:Object.values(d.classWise)}]
+  }
+ });
+}
+load();
+</script>
+
+</body>
+</html>
+`);
+});
+
+/* =========================
+   VIEW
+========================= */
+function viewPage(title){
+return `
+<html>
+<head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body style="background:#020617;color:white;font-family:Segoe UI">
+
+<h2>${title}</h2>
+
+<canvas id="bar"></canvas>
+
+<table border="1">
+<tr><th>Name</th><th>%</th><th>Status</th></tr>
+<tbody id="table"></tbody>
+</table>
+
+<script>
+async function load(){
+ let d=await fetch("/api/data").then(r=>r.json());
+
+ new Chart(bar,{
+  type:"bar",
+  data:{
+   labels:Object.keys(d.subjectWise),
+   datasets:[{data:Object.values(d.subjectWise)}]
+  }
  });
 
  let t=document.getElementById("table");
- t.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
-  t.innerHTML+=\`<tr><td>\${n}</td><td>\${v.percent}%</td></tr>\`;
+  t.innerHTML+=\`
+  <tr>
+  <td>\${n}</td>
+  <td>\${v.percent}%</td>
+  <td>\${v.def?'⚠ Defaulter':'OK'}</td>
+  </tr>\`;
  });
 }
 load();
@@ -332,11 +286,8 @@ load();
 `;
 }
 
-app.get("/subject",(req,res)=>res.send(viewPage("Subject","subject")));
-app.get("/class",(req,res)=>res.send(viewPage("Class","class")));
-app.get("/hod",(req,res)=>res.send(viewPage("HOD","hod")));
+app.get("/subject",(req,res)=>res.send(viewPage("Subject")));
+app.get("/class",(req,res)=>res.send(viewPage("Class")));
+app.get("/hod",(req,res)=>res.send(viewPage("HOD")));
 
-/* =========================
-   START
-========================= */
 app.listen(PORT,()=>console.log("🚀 Server running"));
