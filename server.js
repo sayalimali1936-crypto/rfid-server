@@ -170,16 +170,24 @@ function go(x){location=x}
 });
 
 /* =========================
-   API
+   API with Filters
 ========================= */
 app.get("/api/data",(req,res)=>{
+ const {subject,student,class:cls,batch,period} = req.query;
+
  const data=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
  let records=data.map(l=>{
   let p=l.split(",");
   if(p.length<8) return null;
-  return {date:p[0],name:p[3],className:p[5],subject:p[7]};
+  return {date:p[0],name:p[3],className:p[5],batch:p[6],subject:p[7]};
  }).filter(x=>x && x.name);
+
+ // Apply filters
+ if(subject) records=records.filter(r=>r.subject===subject);
+ if(student) records=records.filter(r=>r.name===student);
+ if(cls) records=records.filter(r=>r.className===cls);
+ if(batch) records=records.filter(r=>r.batch===batch);
 
  let student={},subjectWise={},classWise={};
 
@@ -225,14 +233,16 @@ body{margin:0;font-family:'Segoe UI';display:flex;background:#0f172a;color:white
 table{width:100%;border-collapse:collapse;}
 th,td{padding:10px;border-bottom:1px solid #334155;}
 .def{color:#ef4444}.ok{color:#22c55e}
+.filters{background:#1e293b;padding:15px;border-radius:12px;margin-top:20px;}
+.filters select, .filters input{width:100%;padding:8px;margin:6px 0;border-radius:6px;}
 </style>
 </head>
 <body>
 <div class="sidebar">
 <h2>📊 Dashboard</h2>
 <button onclick="go('/home')">🏠 Home</button>
-<button onclick="go('/subject')">📘 Subject Teacher</button>
-<button onclick="go('/class')">👩‍🏫 Class Teacher</button>
+<button onclick="go('/subject')">📘 Subject</button>
+<button onclick="go('/class')">👩‍🏫 Class</button>
 <button onclick="go('/hod')">🏫 HOD</button>
 <hr>
 <button onclick="exportData()">⬇ Export</button>
@@ -240,21 +250,21 @@ th,td{padding:10px;border-bottom:1px solid #334155;}
 <div class="main">
 <h2>${title}</h2>
 
-<!-- KPI Cards -->
 <div class="cards">
 <div class="card">Lectures<h2 id="lec"></h2></div>
 <div class="card">Students<h2 id="stu"></h2></div>
 <div class="card">Defaulters<h2 id="def"></h2></div>
 </div>
 
-<!-- Charts -->
+<div class="filters" id="filters"></div>
+
 <div class="grid">
 <div class="section"><canvas id="bar"></canvas></div>
+<div class="section"><canvas id="pie"></canvas
 <div class="section"><canvas id="pie"></canvas></div>
 </div>
 <div class="section"><canvas id="line"></canvas></div>
 
-<!-- Table -->
 <div class="section">
 <table>
 <thead><tr><th>Name</th><th>%</th><th>Status</th></tr></thead>
@@ -262,37 +272,75 @@ th,td{padding:10px;border-bottom:1px solid #334155;}
 </table>
 </div>
 
-<!-- Extra role-specific info -->
-<div class="section" id="extra"></div>
-
 </div>
 <script>
 let barChart,pieChart,lineChart;
 function go(x){window.location=x}
+
+function renderFilters(){
+ let f=document.getElementById("filters");
+ if("${mode}"==="subject"){
+   f.innerHTML=`
+   <h3>Filter by Subject</h3>
+   <select id="subjectFilter"><option value="">All</option></select>
+   <button onclick="load()">Apply</button>`;
+ }
+ else if("${mode}"==="class"){
+   f.innerHTML=`
+   <h3>Filters</h3>
+   <select id="subjectFilter"><option value="">All Subjects</option></select>
+   <select id="batchFilter"><option value="">All Batches</option><option>A</option><option>B</option><option>C</option></select>
+   <input id="studentSearch" placeholder="Search Student">
+   <button onclick="load()">Apply</button>`;
+ }
+ else{ // HOD
+   f.innerHTML=`
+   <h3>Filter by Class/Batch</h3>
+   <select id="classFilter"><option value="">All Classes</option><option>SE</option><option>TE</option><option>BE</option></select>
+   <select id="batchFilter"><option value="">All Batches</option><option>A</option><option>B</option><option>C</option></select>
+   <button onclick="load()">Apply</button>`;
+ }
+}
+
 async function load(){
- let d=await fetch("/api/data").then(r=>r.json());
+ let url="/api/data?";
+ if("${mode}"==="subject"){
+   let subj=document.getElementById("subjectFilter").value;
+   if(subj) url+="subject="+encodeURIComponent(subj);
+ }
+ else if("${mode}"==="class"){
+   let subj=document.getElementById("subjectFilter").value;
+   let batch=document.getElementById("batchFilter").value;
+   let search=document.getElementById("studentSearch").value;
+   if(subj) url+="subject="+encodeURIComponent(subj)+"&";
+   if(batch) url+="batch="+encodeURIComponent(batch)+"&";
+   if(search) url+="student="+encodeURIComponent(search);
+ }
+ else{ // HOD
+   let cls=document.getElementById("classFilter").value;
+   let batch=document.getElementById("batchFilter").value;
+   if(cls) url+="class="+encodeURIComponent(cls)+"&";
+   if(batch) url+="batch="+encodeURIComponent(batch);
+ }
+
+ let d=await fetch(url).then(r=>r.json());
  lec.innerText=d.totalLectures;
  stu.innerText=Object.keys(d.studentData).length;
  def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
 
- let labels,values,extra="";
+ let labels,values;
  if("${mode}"==="subject"){
    labels=Object.keys(d.subjectWise);
    values=Object.values(d.subjectWise);
-   extra="<h3>Subject Teacher Metrics</h3><p>Total students present today: "+Object.keys(d.studentData).length+"</p>";
  }
  else if("${mode}"==="class"){
    labels=Object.keys(d.studentData);
    values=Object.values(d.studentData).map(x=>x.count);
-   extra="<h3>Class Teacher Metrics</h3><p>Subject-wise attendance shown above. Weekly/overall defaulters flagged in table.</p>";
  }
  else{ // HOD
    labels=Object.keys(d.classWise);
    values=Object.values(d.classWise);
-   extra="<h3>HOD Metrics</h3><p>Class and subject-wise overview.</p>";
  }
-
- document.getElementById("extra").innerHTML=extra;
 
  if(barChart) barChart.destroy();
  barChart=new Chart(document.getElementById("bar"),{
@@ -315,15 +363,16 @@ async function load(){
  let t=document.getElementById("table");
  t.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
-   t.innerHTML+=\`
+   t.innerHTML+=`
    <tr>
-     <td>\${n}</td>
-     <td>\${v.percent}%</td>
-     <td class="\${v.def?'def':'ok'}">\${v.def?'Defaulter':'OK'}</td>
-   </tr>\`;
+     <td>${n}</td>
+     <td>${v.percent}%</td>
+     <td class="${v.def?'def':'ok'}">${v.def?'Defaulter':'OK'}</td>
+   </tr>`;
  });
 }
 function exportData(){ window.location="/download"; }
+renderFilters();
 load();
 setInterval(load,5000);
 </script>
@@ -331,14 +380,3 @@ setInterval(load,5000);
 </html>
 `;
 }
-/* =========================
-   VIEWS
-========================= */
-app.get("/subject",(req,res)=>res.send(viewPage("Subject Teacher Dashboard","subject")));
-app.get("/class",(req,res)=>res.send(viewPage("Class Teacher Dashboard","class")));
-app.get("/hod",(req,res)=>res.send(viewPage("HOD Dashboard","hod")));
-
-/* =========================
-   START
-========================= */
-app.listen(PORT,()=>console.log("🚀 Server running on port "+PORT));
