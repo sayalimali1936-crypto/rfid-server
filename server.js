@@ -42,15 +42,13 @@ app.get("/log",(req,res)=>{
 
  const now=new Date();
  const day=now.toLocaleString("en-US",{weekday:"long"});
- const time=now.toTimeString().slice(0,5);
 
  const slot=timetable.find(t=>t.day===day && t.class===student.class);
-
  if(!slot) return res.send("NO_SLOT");
 
  const csv=[
   now.toISOString().slice(0,10),
-  time,
+  now.toTimeString().slice(0,5),
   "STUDENT",
   student.student_name,
   card,
@@ -60,12 +58,11 @@ app.get("/log",(req,res)=>{
  ].join(",")+"\n";
 
  fs.appendFileSync(csvPath,csv);
-
  res.send("OK");
 });
 
 /* ================= DATA ================= */
-function getData(filters){
+function getData(filters,mode){
 
  const raw=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
@@ -115,7 +112,9 @@ app.get("/api",(req,res)=>{
   student:req.query.student || ""
  };
 
- const data=getData(filters);
+ const mode=req.query.mode || "subject";
+
+ const data=getData(filters,mode);
 
  const subjects=[...new Set(timetable.map(t=>t.subject))];
  const classes=[...new Set(timetable.map(t=>t.class))];
@@ -132,26 +131,104 @@ return `
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;font-family:Segoe UI;background:#020617;color:white;display:flex}
-.sidebar{width:220px;background:#020617;padding:20px;border-right:1px solid #334155}
-.sidebar a{display:block;padding:10px;margin:5px;background:#1e293b;color:white;text-decoration:none;border-radius:6px}
-.sidebar a:hover{background:#6366f1}
-.main{flex:1;padding:20px}
-.cards{display:flex;gap:10px}
-.card{flex:1;background:#1e293b;padding:15px;border-radius:10px;text-align:center}
-.grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:20px}
-select,input{padding:6px;margin:5px;border-radius:5px}
-table{width:100%;margin-top:20px;border-collapse:collapse}
-td,th{padding:10px;border-bottom:1px solid #334155}
+body{
+ margin:0;
+ font-family:Segoe UI;
+ background:linear-gradient(135deg,#020617,#0f172a);
+ color:white;
+ display:flex;
+}
+
+/* sidebar */
+.sidebar{
+ width:220px;
+ padding:20px;
+ background:#020617;
+ border-right:1px solid #334155;
+}
+
+.sidebar a{
+ display:block;
+ padding:12px;
+ margin:6px 0;
+ background:#1e293b;
+ color:white;
+ text-decoration:none;
+ border-radius:8px;
+ transition:.3s;
+}
+.sidebar a:hover{
+ background:#6366f1;
+ transform:translateX(6px);
+}
+
+/* main */
+.main{
+ flex:1;
+ padding:20px;
+ animation:fade .5s ease;
+}
+
+@keyframes fade{
+ from{opacity:0; transform:translateY(10px)}
+ to{opacity:1; transform:translateY(0)}
+}
+
+/* cards */
+.cards{
+ display:flex;
+ gap:15px;
+}
+
+.card{
+ flex:1;
+ padding:20px;
+ border-radius:12px;
+ background:rgba(255,255,255,0.08);
+ backdrop-filter:blur(10px);
+ text-align:center;
+ transition:.3s;
+}
+
+.card:hover{
+ transform:scale(1.05);
+}
+
+/* grid */
+.grid{
+ display:grid;
+ grid-template-columns:2fr 1fr;
+ gap:20px;
+ margin-top:20px;
+}
+
+/* filters */
+select,input{
+ padding:8px;
+ margin:5px;
+ border-radius:6px;
+}
+
+/* table */
+table{
+ width:100%;
+ margin-top:20px;
+ border-collapse:collapse;
+}
+td,th{
+ padding:10px;
+ border-bottom:1px solid #334155;
+}
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<a href="/subject">Subject</a>
-<a href="/class">Class</a>
-<a href="/hod">HOD</a>
+<h3>Dashboard</h3>
+<a href="/subject">📘 Subject</a>
+<a href="/class">👩‍🏫 Class</a>
+<a href="/hod">🏫 HOD</a>
 </div>
 
 <div class="main">
@@ -163,7 +240,7 @@ td,th{padding:10px;border-bottom:1px solid #334155}
 <select id="className"></select>
 <select id="batch"></select>
 ${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
-<button onclick="load()">Apply</button>
+<button onclick="apply()">Apply</button>
 </div>
 
 <div class="cards">
@@ -186,30 +263,35 @@ ${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
 
 <script>
 
+let filters={subject:"",className:"",batch:"",student:""};
 let chart;
+
+function apply(){
+ filters.subject=subject.value;
+ filters.className=className.value;
+ filters.batch=batch.value;
+ filters.student=student?student.value:"";
+ load();
+}
 
 async function load(){
 
- let url="/api?subject="+subject.value+
- "&className="+className.value+
- "&batch="+batch.value+
- "&student="+(student?student.value:"");
+ let url="/api?mode=${mode}&subject="+filters.subject+
+ "&className="+filters.className+
+ "&batch="+filters.batch+
+ "&student="+filters.student;
 
  let d=await fetch(url).then(r=>r.json());
 
- /* KEEP SELECTED VALUES */
- let subVal=subject.value;
- let clsVal=className.value;
- let batVal=batch.value;
+ /* keep selection */
+ subject.innerHTML='<option value="">Subject</option>';
+ d.subjects.forEach(s=>subject.innerHTML+=\`<option \${s===filters.subject?'selected':''}>\${s}</option>\`);
 
- subject.innerHTML='<option value="">All Subjects</option>';
- d.subjects.forEach(s=>subject.innerHTML+=\`<option \${s===subVal?'selected':''}>\${s}</option>\`);
+ className.innerHTML='<option value="">Class</option>';
+ d.classes.forEach(c=>className.innerHTML+=\`<option \${c===filters.className?'selected':''}>\${c}</option>\`);
 
- className.innerHTML='<option value="">All Classes</option>';
- d.classes.forEach(c=>className.innerHTML+=\`<option \${c===clsVal?'selected':''}>\${c}</option>\`);
-
- batch.innerHTML='<option value="">All Batches</option>';
- d.batches.forEach(b=>batch.innerHTML+=\`<option \${b===batVal?'selected':''}>\${b}</option>\`);
+ batch.innerHTML='<option value="">Batch</option>';
+ d.batches.forEach(b=>batch.innerHTML+=\`<option \${b===filters.batch?'selected':''}>\${b}</option>\`);
 
  lec.innerText=d.total;
  stu.innerText=Object.keys(d.studentData).length;
