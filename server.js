@@ -78,7 +78,6 @@ function getData(filters){
   };
  }).filter(x=>x && x.name && x.name!=="UNKNOWN");
 
- /* FILTERS */
  if(filters.subject) records=records.filter(r=>r.subject===filters.subject);
  if(filters.className) records=records.filter(r=>r.className===filters.className);
  if(filters.batch) records=records.filter(r=>r.batch===filters.batch);
@@ -99,19 +98,15 @@ function getData(filters){
   studentData[n]={percent:p.toFixed(1),def:p<75};
  });
 
- /* TODAY */
  let today=new Date().toISOString().slice(0,10);
  let todayCount=records.filter(r=>r.date===today).length;
  let totalStudents=Object.keys(student).length || 1;
  let todayPercent=((todayCount/totalStudents)*100).toFixed(1);
 
- /* BEST & LOWEST SUBJECT */
- let bestSubject="",lowSubject="";
- let max=0,min=9999;
-
+ let best="",low="",max=0,min=9999;
  Object.entries(subjectWise).forEach(([s,v])=>{
-  if(v>max){max=v;bestSubject=s;}
-  if(v<min){min=v;lowSubject=s;}
+  if(v>max){max=v;best=s;}
+  if(v<min){min=v;low=s;}
  });
 
  return {
@@ -121,14 +116,12 @@ function getData(filters){
   todayPercent,
   totalStudents,
   defaulters:Object.values(studentData).filter(x=>x.def).length,
-  bestSubject,
-  lowSubject
+  best,low
  };
 }
 
 /* ================= API ================= */
 app.get("/api",(req,res)=>{
-
  const filters={
   subject:req.query.subject || "",
   className:req.query.className || "",
@@ -151,33 +144,67 @@ return `
 <html>
 <head>
 <style>
-body{margin:0;font-family:Segoe UI;background:linear-gradient(135deg,#020617,#0f172a);color:white;display:flex}
+body{margin:0;font-family:Segoe UI;background:#0f172a;color:white;display:flex}
 
-/* sidebar */
-.sidebar{width:220px;padding:20px;background:#020617;border-right:1px solid #334155}
-.sidebar a{display:block;padding:10px;margin:5px;background:#1e293b;color:white;text-decoration:none;border-radius:6px}
-.sidebar a:hover{background:#6366f1}
-
-/* main */
-.main{flex:1;padding:20px}
-
-/* cards */
-.cards{display:flex;gap:15px;flex-wrap:wrap}
-.card{
- flex:1;
- min-width:180px;
+/* SIDEBAR */
+.sidebar{
+ width:230px;
+ background:#020617;
  padding:20px;
- border-radius:12px;
- background:rgba(255,255,255,0.08);
- backdrop-filter:blur(10px);
- text-align:center;
+ height:100vh;
 }
 
-/* filters */
-select,input{padding:8px;margin:5px;border-radius:6px}
+.sidebar h2{margin-bottom:20px}
+.sidebar a{
+ display:block;
+ padding:12px;
+ margin:6px 0;
+ background:#1e293b;
+ border-radius:8px;
+ color:white;
+ text-decoration:none;
+}
+.sidebar a:hover{background:#6366f1}
 
-/* table */
-table{width:100%;margin-top:20px;border-collapse:collapse}
+/* MAIN */
+.main{flex:1;padding:20px}
+
+/* HEADER */
+.header{
+ font-size:20px;
+ margin-bottom:20px;
+}
+
+/* CARDS */
+.cards{
+ display:grid;
+ grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+ gap:15px;
+}
+
+.card{
+ padding:20px;
+ border-radius:12px;
+ background:#1e293b;
+}
+
+/* SECTION */
+.section{
+ margin-top:20px;
+ background:#1e293b;
+ padding:20px;
+ border-radius:12px;
+}
+
+/* FILTER */
+select,input{
+ padding:8px;
+ margin:5px;
+ border-radius:6px;
+}
+
+/* TABLE */
+table{width:100%;margin-top:10px}
 td,th{padding:10px;border-bottom:1px solid #334155}
 </style>
 </head>
@@ -185,7 +212,7 @@ td,th{padding:10px;border-bottom:1px solid #334155}
 <body>
 
 <div class="sidebar">
-<h3>Dashboard</h3>
+<h2>📊 Dashboard</h2>
 <a href="/subject">Subject</a>
 <a href="/class">Class</a>
 <a href="/hod">HOD</a>
@@ -193,31 +220,37 @@ td,th{padding:10px;border-bottom:1px solid #334155}
 
 <div class="main">
 
-<h2>${title}</h2>
+<div class="header">${title}</div>
 
+<div>
 <select id="subject"></select>
 <select id="className"></select>
 <select id="batch"></select>
 ${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
 <button onclick="apply()">Apply</button>
+</div>
 
 <div class="cards">
-<div class="card">📚 Lectures<br><h2 id="lec"></h2></div>
-<div class="card">👥 Today<br><h2 id="today"></h2></div>
-<div class="card">📊 Today %<br><h2 id="todayP"></h2></div>
-<div class="card">⚠ Defaulters<br><h2 id="def"></h2></div>
-<div class="card">🎓 Students<br><h2 id="stu"></h2></div>
+<div class="card">Lectures <h2 id="lec"></h2></div>
+<div class="card">Today <h2 id="today"></h2></div>
+<div class="card">Today % <h2 id="todayP"></h2></div>
+<div class="card">Defaulters <h2 id="def"></h2></div>
+<div class="card">Students <h2 id="stu"></h2></div>
 </div>
 
-<div class="cards" style="margin-top:20px">
-<div class="card">🏆 Best Subject<br><h3 id="best"></h3></div>
-<div class="card">📉 Lowest Subject<br><h3 id="low"></h3></div>
+<div class="section">
+<h3>Insights</h3>
+<p>🏆 Best Subject: <b id="best"></b></p>
+<p>📉 Lowest Subject: <b id="low"></b></p>
 </div>
 
+<div class="section">
+<h3>Student Report</h3>
 <table>
 <tr><th>Name</th><th>%</th><th>Status</th></tr>
 <tbody id="table"></tbody>
 </table>
+</div>
 
 </div>
 
@@ -240,14 +273,14 @@ async function load(){
  "&batch="+filters.batch+
  "&student="+filters.student).then(r=>r.json());
 
- subject.innerHTML='<option value="">Subject</option>';
- d.subjects.forEach(s=>subject.innerHTML+=\`<option \${s===filters.subject?'selected':''}>\${s}</option>\`);
+ subject.innerHTML='<option>Subject</option>';
+ d.subjects.forEach(s=>subject.innerHTML+=\`<option>\${s}</option>\`);
 
- className.innerHTML='<option value="">Class</option>';
- d.classes.forEach(c=>className.innerHTML+=\`<option \${c===filters.className?'selected':''}>\${c}</option>\`);
+ className.innerHTML='<option>Class</option>';
+ d.classes.forEach(c=>className.innerHTML+=\`<option>\${c}</option>\`);
 
- batch.innerHTML='<option value="">Batch</option>';
- d.batches.forEach(b=>batch.innerHTML+=\`<option \${b===filters.batch?'selected':''}>\${b}</option>\`);
+ batch.innerHTML='<option>Batch</option>';
+ d.batches.forEach(b=>batch.innerHTML+=\`<option>\${b}</option>\`);
 
  lec.innerText=d.totalLectures;
  today.innerText=d.todayCount;
@@ -255,8 +288,8 @@ async function load(){
  def.innerText=d.defaulters;
  stu.innerText=d.totalStudents;
 
- best.innerText=d.bestSubject || "-";
- low.innerText=d.lowSubject || "-";
+ best.innerText=d.best || "-";
+ low.innerText=d.low || "-";
 
  table.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
@@ -279,9 +312,9 @@ load();
 
 /* ================= ROUTES ================= */
 app.get("/",(req,res)=>res.redirect("/subject"));
-app.get("/subject",(req,res)=>res.send(page("Subject Teacher View","subject")));
-app.get("/class",(req,res)=>res.send(page("Class Teacher View","class")));
-app.get("/hod",(req,res)=>res.send(page("HOD View","hod")));
+app.get("/subject",(req,res)=>res.send(page("Subject Teacher Dashboard","subject")));
+app.get("/class",(req,res)=>res.send(page("Class Teacher Dashboard","class")));
+app.get("/hod",(req,res)=>res.send(page("HOD Dashboard","hod")));
 
 /* ================= START ================= */
 app.listen(PORT,()=>console.log("🚀 Server running"));
