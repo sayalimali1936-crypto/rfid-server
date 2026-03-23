@@ -62,7 +62,7 @@ app.get("/log",(req,res)=>{
 });
 
 /* ================= DATA ================= */
-function getData(filters,mode){
+function getData(filters){
 
  const raw=fs.readFileSync(csvPath,"utf8").split(/\r?\n/).slice(1);
 
@@ -70,6 +70,7 @@ function getData(filters,mode){
   let p=l.split(",");
   if(p.length<8) return null;
   return {
+   date:p[0],
    name:p[3],
    className:p[5],
    batch:p[6],
@@ -77,29 +78,52 @@ function getData(filters,mode){
   };
  }).filter(x=>x && x.name && x.name!=="UNKNOWN");
 
- /* APPLY FILTERS */
+ /* FILTERS */
  if(filters.subject) records=records.filter(r=>r.subject===filters.subject);
  if(filters.className) records=records.filter(r=>r.className===filters.className);
  if(filters.batch) records=records.filter(r=>r.batch===filters.batch);
  if(filters.student) records=records.filter(r=>r.name.toLowerCase().includes(filters.student.toLowerCase()));
 
- let student={},subjectWise={},classWise={};
+ let student={},subjectWise={};
 
  records.forEach(r=>{
   student[r.name]=(student[r.name]||0)+1;
   subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
-  classWise[r.className]=(classWise[r.className]||0)+1;
  });
 
- let total=records.length||1;
+ let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length || 1;
 
  let studentData={};
  Object.keys(student).forEach(n=>{
-  let p=(student[n]/total)*100;
+  let p=(student[n]/totalLectures)*100;
   studentData[n]={percent:p.toFixed(1),def:p<75};
  });
 
- return {studentData,subjectWise,classWise,total};
+ /* TODAY */
+ let today=new Date().toISOString().slice(0,10);
+ let todayCount=records.filter(r=>r.date===today).length;
+ let totalStudents=Object.keys(student).length || 1;
+ let todayPercent=((todayCount/totalStudents)*100).toFixed(1);
+
+ /* BEST & LOWEST SUBJECT */
+ let bestSubject="",lowSubject="";
+ let max=0,min=9999;
+
+ Object.entries(subjectWise).forEach(([s,v])=>{
+  if(v>max){max=v;bestSubject=s;}
+  if(v<min){min=v;lowSubject=s;}
+ });
+
+ return {
+  studentData,
+  totalLectures,
+  todayCount,
+  todayPercent,
+  totalStudents,
+  defaulters:Object.values(studentData).filter(x=>x.def).length,
+  bestSubject,
+  lowSubject
+ };
 }
 
 /* ================= API ================= */
@@ -112,9 +136,7 @@ app.get("/api",(req,res)=>{
   student:req.query.student || ""
  };
 
- const mode=req.query.mode || "subject";
-
- const data=getData(filters,mode);
+ const data=getData(filters);
 
  const subjects=[...new Set(timetable.map(t=>t.subject))];
  const classes=[...new Set(timetable.map(t=>t.class))];
@@ -128,97 +150,35 @@ function page(title,mode){
 return `
 <html>
 <head>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-body{
- margin:0;
- font-family:Segoe UI;
- background:linear-gradient(135deg,#020617,#0f172a);
- color:white;
- display:flex;
-}
+body{margin:0;font-family:Segoe UI;background:linear-gradient(135deg,#020617,#0f172a);color:white;display:flex}
 
 /* sidebar */
-.sidebar{
- width:220px;
- padding:20px;
- background:#020617;
- border-right:1px solid #334155;
-}
-
-.sidebar a{
- display:block;
- padding:12px;
- margin:6px 0;
- background:#1e293b;
- color:white;
- text-decoration:none;
- border-radius:8px;
- transition:.3s;
-}
-.sidebar a:hover{
- background:#6366f1;
- transform:translateX(6px);
-}
+.sidebar{width:220px;padding:20px;background:#020617;border-right:1px solid #334155}
+.sidebar a{display:block;padding:10px;margin:5px;background:#1e293b;color:white;text-decoration:none;border-radius:6px}
+.sidebar a:hover{background:#6366f1}
 
 /* main */
-.main{
- flex:1;
- padding:20px;
- animation:fade .5s ease;
-}
-
-@keyframes fade{
- from{opacity:0; transform:translateY(10px)}
- to{opacity:1; transform:translateY(0)}
-}
+.main{flex:1;padding:20px}
 
 /* cards */
-.cards{
- display:flex;
- gap:15px;
-}
-
+.cards{display:flex;gap:15px;flex-wrap:wrap}
 .card{
  flex:1;
+ min-width:180px;
  padding:20px;
  border-radius:12px;
  background:rgba(255,255,255,0.08);
  backdrop-filter:blur(10px);
  text-align:center;
- transition:.3s;
-}
-
-.card:hover{
- transform:scale(1.05);
-}
-
-/* grid */
-.grid{
- display:grid;
- grid-template-columns:2fr 1fr;
- gap:20px;
- margin-top:20px;
 }
 
 /* filters */
-select,input{
- padding:8px;
- margin:5px;
- border-radius:6px;
-}
+select,input{padding:8px;margin:5px;border-radius:6px}
 
 /* table */
-table{
- width:100%;
- margin-top:20px;
- border-collapse:collapse;
-}
-td,th{
- padding:10px;
- border-bottom:1px solid #334155;
-}
+table{width:100%;margin-top:20px;border-collapse:collapse}
+td,th{padding:10px;border-bottom:1px solid #334155}
 </style>
 </head>
 
@@ -226,32 +186,32 @@ td,th{
 
 <div class="sidebar">
 <h3>Dashboard</h3>
-<a href="/subject">📘 Subject</a>
-<a href="/class">👩‍🏫 Class</a>
-<a href="/hod">🏫 HOD</a>
+<a href="/subject">Subject</a>
+<a href="/class">Class</a>
+<a href="/hod">HOD</a>
 </div>
 
 <div class="main">
 
 <h2>${title}</h2>
 
-<div>
 <select id="subject"></select>
 <select id="className"></select>
 <select id="batch"></select>
 ${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
 <button onclick="apply()">Apply</button>
-</div>
 
 <div class="cards">
-<div class="card">Lectures <h2 id="lec"></h2></div>
-<div class="card">Students <h2 id="stu"></h2></div>
-<div class="card">Defaulters <h2 id="def"></h2></div>
+<div class="card">📚 Lectures<br><h2 id="lec"></h2></div>
+<div class="card">👥 Today<br><h2 id="today"></h2></div>
+<div class="card">📊 Today %<br><h2 id="todayP"></h2></div>
+<div class="card">⚠ Defaulters<br><h2 id="def"></h2></div>
+<div class="card">🎓 Students<br><h2 id="stu"></h2></div>
 </div>
 
-<div class="grid">
-<canvas id="bar"></canvas>
-<canvas id="pie"></canvas>
+<div class="cards" style="margin-top:20px">
+<div class="card">🏆 Best Subject<br><h3 id="best"></h3></div>
+<div class="card">📉 Lowest Subject<br><h3 id="low"></h3></div>
 </div>
 
 <table>
@@ -264,7 +224,6 @@ ${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
 <script>
 
 let filters={subject:"",className:"",batch:"",student:""};
-let chart;
 
 function apply(){
  filters.subject=subject.value;
@@ -276,14 +235,11 @@ function apply(){
 
 async function load(){
 
- let url="/api?mode=${mode}&subject="+filters.subject+
+ let d=await fetch("/api?subject="+filters.subject+
  "&className="+filters.className+
  "&batch="+filters.batch+
- "&student="+filters.student;
+ "&student="+filters.student).then(r=>r.json());
 
- let d=await fetch(url).then(r=>r.json());
-
- /* keep selection */
  subject.innerHTML='<option value="">Subject</option>';
  d.subjects.forEach(s=>subject.innerHTML+=\`<option \${s===filters.subject?'selected':''}>\${s}</option>\`);
 
@@ -293,15 +249,14 @@ async function load(){
  batch.innerHTML='<option value="">Batch</option>';
  d.batches.forEach(b=>batch.innerHTML+=\`<option \${b===filters.batch?'selected':''}>\${b}</option>\`);
 
- lec.innerText=d.total;
- stu.innerText=Object.keys(d.studentData).length;
- def.innerText=Object.values(d.studentData).filter(x=>x.def).length;
+ lec.innerText=d.totalLectures;
+ today.innerText=d.todayCount;
+ todayP.innerText=d.todayPercent+"%";
+ def.innerText=d.defaulters;
+ stu.innerText=d.totalStudents;
 
- let labels="${mode}"==="hod"?Object.keys(d.classWise):Object.keys(d.subjectWise);
- let values="${mode}"==="hod"?Object.values(d.classWise):Object.values(d.subjectWise);
-
- if(chart) chart.destroy();
- chart=new Chart(bar,{type:"bar",data:{labels,datasets:[{data:values}]}});
+ best.innerText=d.bestSubject || "-";
+ low.innerText=d.lowSubject || "-";
 
  table.innerHTML="";
  Object.entries(d.studentData).forEach(([n,v])=>{
@@ -327,13 +282,6 @@ app.get("/",(req,res)=>res.redirect("/subject"));
 app.get("/subject",(req,res)=>res.send(page("Subject Teacher View","subject")));
 app.get("/class",(req,res)=>res.send(page("Class Teacher View","class")));
 app.get("/hod",(req,res)=>res.send(page("HOD View","hod")));
-app.get("/home",(req,res)=>{
- res.redirect("/subject");
-});
-
-app.get("/dashboard",(req,res)=>{
- res.redirect("/subject");
-});
 
 /* ================= START ================= */
 app.listen(PORT,()=>console.log("🚀 Server running"));
