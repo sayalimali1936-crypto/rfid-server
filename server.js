@@ -327,6 +327,13 @@ app.get("/",(req,res)=>res.redirect("/subject"));
 app.get("/subject",(req,res)=>res.send(page("Subject Teacher View","subject")));
 app.get("/class",(req,res)=>res.send(page("Class Teacher View","class")));
 app.get("/hod",(req,res)=>res.send(page("HOD View","hod")));
+app.get("/home",(req,res)=>{
+ res.redirect("/subject");
+});
+
+app.get("/dashboard",(req,res)=>{
+ res.redirect("/subject");
+});
 
 /* ================= START ================= */
 app.listen(PORT,()=>console.log("🚀 Server running"));
