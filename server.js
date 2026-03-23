@@ -311,6 +311,9 @@ load();
 }
 
 /* ================= ROUTES ================= */
+
+app.get("/dashboard",(req,res)=>res.redirect("/subject"));
+app.get("/home",(req,res)=>res.redirect("/subject"));
 app.get("/",(req,res)=>res.redirect("/subject"));
 app.get("/subject",(req,res)=>res.send(page("Subject Teacher Dashboard","subject")));
 app.get("/class",(req,res)=>res.send(page("Class Teacher Dashboard","class")));
