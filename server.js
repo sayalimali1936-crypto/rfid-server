@@ -11,8 +11,7 @@ const studentsPath = path.join(__dirname, "Students.csv");
 
 /* ================= INIT ================= */
 if (!fs.existsSync(csvPath)) {
- fs.writeFileSync(csvPath,
-  "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
+ fs.writeFileSync(csvPath,"Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
 }
 
 /* ================= LOAD CSV ================= */
@@ -76,66 +75,46 @@ function getData(filters){
    batch:p[6],
    subject:p[7]
   };
- }).filter(x=>x && x.name && x.name!=="UNKNOWN");
+ }).filter(x=>x);
 
- if(filters.subject) records=records.filter(r=>r.subject===filters.subject);
  if(filters.className) records=records.filter(r=>r.className===filters.className);
- if(filters.batch) records=records.filter(r=>r.batch===filters.batch);
- if(filters.student) records=records.filter(r=>r.name.toLowerCase().includes(filters.student.toLowerCase()));
+ if(filters.subject) records=records.filter(r=>r.subject===filters.subject);
+ if(filters.student) records=records.filter(r=>r.name===filters.student);
 
- let student={},subjectWise={};
+ let subjectWise={},studentWise={},daily={};
 
  records.forEach(r=>{
-  student[r.name]=(student[r.name]||0)+1;
   subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
+  studentWise[r.name]=(studentWise[r.name]||0)+1;
+  daily[r.date]=(daily[r.date]||0)+1;
  });
 
- let totalLectures=[...new Set(records.map(r=>r.date+r.subject))].length || 1;
+ let dates=Object.keys(daily).slice(-7);
+ let weekly=dates.map(d=>daily[d]);
 
- let studentData={};
- Object.keys(student).forEach(n=>{
-  let p=(student[n]/totalLectures)*100;
-  studentData[n]={percent:p.toFixed(1),def:p<75};
- });
-
- let today=new Date().toISOString().slice(0,10);
- let todayCount=records.filter(r=>r.date===today).length;
- let totalStudents=Object.keys(student).length || 1;
- let todayPercent=((todayCount/totalStudents)*100).toFixed(1);
-
- let best="",low="",max=0,min=9999;
- Object.entries(subjectWise).forEach(([s,v])=>{
-  if(v>max){max=v;best=s;}
-  if(v<min){min=v;low=s;}
- });
+ let totalStudents=Object.keys(studentWise).length||1;
+ let present=records.length;
+ let absent=totalStudents-present;
+ let percent=((present/totalStudents)*100).toFixed(1);
 
  return {
-  studentData,
-  totalLectures,
-  todayCount,
-  todayPercent,
-  totalStudents,
-  defaulters:Object.values(studentData).filter(x=>x.def).length,
-  best,low
+  present,absent,percent,
+  subjectWise,
+  weeklyLabels:dates,
+  weeklyData:weekly,
+  studentWise
  };
 }
 
 /* ================= API ================= */
 app.get("/api",(req,res)=>{
- const filters={
-  subject:req.query.subject || "",
-  className:req.query.className || "",
-  batch:req.query.batch || "",
-  student:req.query.student || ""
- };
-
- const data=getData(filters);
+ const data=getData(req.query);
 
  const subjects=[...new Set(timetable.map(t=>t.subject))];
- const classes=[...new Set(timetable.map(t=>t.class))];
- const batches=[...new Set(timetable.map(t=>t.batch))];
+ const classes=["SE","TE","BE"];
+ const studentsList=[...new Set(students.map(s=>s.student_name))];
 
- res.json({...data,subjects,classes,batches});
+ res.json({...data,subjects,classes,studentsList});
 });
 
 /* ================= UI ================= */
@@ -143,96 +122,62 @@ function page(title,mode){
 return `
 <html>
 <head>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body{
- margin:0;
- font-family:Segoe UI;
- background:#0f172a;
- color:white;
- display:flex;
-}
+
+body{margin:0;font-family:Segoe UI;background:#0f172a;color:white;display:flex}
 
 /* SIDEBAR */
 .sidebar{
- width:220px;
+ width:230px;
  background:#020617;
  padding:20px;
- height:100vh;
 }
 
-.sidebar h2{margin-bottom:20px}
+.sidebar select{
+ width:100%;
+ padding:8px;
+ margin-bottom:20px;
+}
 
 .sidebar a{
  display:block;
- padding:12px;
- margin:8px 0;
+ padding:10px;
+ margin:5px 0;
  background:#1e293b;
- border-radius:8px;
+ border-radius:6px;
  color:white;
  text-decoration:none;
 }
 
-.sidebar a:hover{
- background:#6366f1;
-}
-
 /* MAIN */
-.main{
- flex:1;
- padding:20px;
-}
-
-/* FILTER */
-.filters{
- display:flex;
- gap:10px;
- margin-bottom:20px;
-}
-
-select,input{
- padding:8px;
- border-radius:6px;
-}
+.main{flex:1;padding:20px}
 
 /* CARDS */
-.cards{
- display:flex;
- gap:15px;
-}
-
+.cards{display:flex;gap:15px}
 .card{
  flex:1;
  padding:20px;
  background:#1e293b;
- border-radius:12px;
+ border-radius:10px;
  text-align:center;
 }
 
-/* BOX */
-.box{
- margin-top:20px;
- padding:20px;
- background:#1e293b;
- border-radius:12px;
-}
+/* SECTION */
+.section{margin-top:20px;background:#1e293b;padding:20px;border-radius:10px}
 
-/* TABLE */
-table{
- width:100%;
- margin-top:10px;
- border-collapse:collapse;
-}
-td,th{
- padding:10px;
- border-bottom:1px solid #334155;
-}
+select{padding:8px;margin:5px}
+
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<h2>📊 Dashboard</h2>
+<h3>Dashboard</h3>
+
+<select id="className"></select>
+
 <a href="/subject">Subject Teacher</a>
 <a href="/class">Class Teacher</a>
 <a href="/hod">HOD</a>
@@ -242,140 +187,70 @@ td,th{
 
 <h2>${title}</h2>
 
-<!-- FILTER -->
-<div class="filters">
-<select id="className"></select>
+${mode!=="main" ? `
+<select id="student"></select>
 <select id="subject"></select>
-<select id="batch"></select>
-${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
-<button onclick="apply()">Apply</button>
-</div>
-
-${mode==="hod" || mode==="subject" ? `
-
-<!-- ===== IMAGE 1 STYLE ===== -->
+<button onclick="load()">Apply</button>
+` : ``}
 
 <div class="cards">
-<div class="card">
-<h3>Total Present</h3>
-<h2 id="present"></h2>
+<div class="card">Present <h2 id="present"></h2></div>
+<div class="card">Absent <h2 id="absent"></h2></div>
+<div class="card">% Attendance <h2 id="percent"></h2></div>
 </div>
 
-<div class="card">
-<h3>Total Absent</h3>
-<h2 id="absent"></h2>
+<div class="section">
+<canvas id="lineChart"></canvas>
 </div>
 
-<div class="card">
-<h3>% Attendance</h3>
-<h2 id="percent"></h2>
+<div class="section">
+<canvas id="barChart"></canvas>
 </div>
-</div>
-
-<div class="box">
-<h3>Weekly Attendance</h3>
-<p id="weekly">Data loading...</p>
-</div>
-
-<div class="box">
-<h3>Daily Subject-wise Attendance</h3>
-<table>
-<tr><th>Subject</th><th>Present</th></tr>
-<tbody id="subjectTable"></tbody>
-</table>
-</div>
-
-` : `
-
-<!-- ===== IMAGE 2 STYLE ===== -->
-
-<div class="cards">
-<div class="card">
-<h3>Total Present</h3>
-<h2 id="present"></h2>
-</div>
-
-<div class="card">
-<h3>Total Lectures</h3>
-<h2 id="lec"></h2>
-</div>
-</div>
-
-<div class="box">
-<h3>Subject-wise Attendance</h3>
-<table>
-<tr><th>Subject</th><th>Count</th></tr>
-<tbody id="subjectTable"></tbody>
-</table>
-</div>
-
-<div class="box">
-<h3>Student Report</h3>
-<table>
-<tr><th>Name</th><th>%</th><th>Status</th></tr>
-<tbody id="table"></tbody>
-</table>
-</div>
-
-`}
 
 </div>
 
 <script>
 
-let filters={subject:"",className:"",batch:"",student:""};
-
-function apply(){
- filters.subject=subject.value;
- filters.className=className.value;
- filters.batch=batch.value;
- filters.student=student?student.value:"";
- load();
-}
+let lineChart,barChart;
 
 async function load(){
 
- let d=await fetch("/api?subject="+filters.subject+
- "&className="+filters.className+
- "&batch="+filters.batch+
- "&student="+filters.student).then(r=>r.json());
+ let cls=document.getElementById("className").value;
 
- subject.innerHTML='<option>Subject</option>';
- d.subjects.forEach(s=>subject.innerHTML+=\`<option>\${s}</option>\`);
+ let url="/api?className="+cls+
+ "&subject="+(subject?subject.value:"")+
+ "&student="+(student?student.value:"");
 
- className.innerHTML='<option>Class</option>';
+ let d=await fetch(url).then(r=>r.json());
+
+ className.innerHTML="";
  d.classes.forEach(c=>className.innerHTML+=\`<option>\${c}</option>\`);
 
- batch.innerHTML='<option>Batch</option>';
- d.batches.forEach(b=>batch.innerHTML+=\`<option>\${b}</option>\`);
-
- let present=d.todayCount || 0;
- let total=d.totalStudents || 1;
- let percent=((present/total)*100).toFixed(1);
-
- presentEl.innerText=present;
- absent.innerText=total-present;
- percentEl.innerText=percent+"%";
-
- lec && (lec.innerText=d.totalLectures);
-
- /* SUBJECT TABLE */
- subjectTable.innerHTML="";
- Object.entries(d.subjectWise || {}).forEach(([s,v])=>{
-  subjectTable.innerHTML+=\`<tr><td>\${s}</td><td>\${v}</td></tr>\`;
- });
-
- /* STUDENT TABLE */
- if(table){
- table.innerHTML="";
- Object.entries(d.studentData || {}).forEach(([n,v])=>{
-  table.innerHTML+=\`<tr>
-  <td>\${n}</td>
-  <td>\${v.percent}%</td>
-  <td style="color:\${v.def?'red':'lime'}">\${v.def?'Defaulter':'OK'}</td>
-  </tr>\`;
- });
+ if(subject){
+ subject.innerHTML="";
+ d.subjects.forEach(s=>subject.innerHTML+=\`<option>\${s}</option>\`);
  }
+
+ if(student){
+ student.innerHTML="";
+ d.studentsList.forEach(s=>student.innerHTML+=\`<option>\${s}</option>\`);
+ }
+
+ present.innerText=d.present;
+ absent.innerText=d.absent;
+ percent.innerText=d.percent+"%";
+
+ if(lineChart) lineChart.destroy();
+ lineChart=new Chart(lineChartCanvas,{
+  type:"line",
+  data:{labels:d.weeklyLabels,datasets:[{data:d.weeklyData}]}
+ });
+
+ if(barChart) barChart.destroy();
+ barChart=new Chart(barChartCanvas,{
+  type:"bar",
+  data:{labels:Object.keys(d.subjectWise),datasets:[{data:Object.values(d.subjectWise)}]}
+ });
 
 }
 
@@ -388,14 +263,12 @@ setInterval(load,3000);
 </html>
 `;
 }
-/* ================= ROUTES ================= */
 
-app.get("/dashboard",(req,res)=>res.redirect("/subject"));
-app.get("/home",(req,res)=>res.redirect("/subject"));
-app.get("/",(req,res)=>res.redirect("/subject"));
-app.get("/subject",(req,res)=>res.send(page("Subject Teacher Dashboard","subject")));
-app.get("/class",(req,res)=>res.send(page("Class Teacher Dashboard","class")));
+/* ================= ROUTES ================= */
+app.get("/dashboard",(req,res)=>res.redirect("/hod"));
+app.get("/",(req,res)=>res.redirect("/hod"));
+app.get("/subject",(req,res)=>res.send(page("Subject Teacher View","subject")));
+app.get("/class",(req,res)=>res.send(page("Class Teacher View","class")));
 app.get("/hod",(req,res)=>res.send(page("HOD Dashboard","hod")));
 
-/* ================= START ================= */
-app.listen(PORT,()=>console.log("🚀 Server running"));
+app.listen(PORT,()=>console.log("🚀 Running"));
