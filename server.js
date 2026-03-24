@@ -144,68 +144,88 @@ return `
 <html>
 <head>
 <style>
-body{margin:0;font-family:Segoe UI;background:#0f172a;color:white;display:flex}
+body{
+ margin:0;
+ font-family:Segoe UI;
+ background:#0f172a;
+ color:white;
+ display:flex;
+}
 
 /* SIDEBAR */
 .sidebar{
- width:230px;
+ width:220px;
  background:#020617;
  padding:20px;
  height:100vh;
 }
 
 .sidebar h2{margin-bottom:20px}
+
 .sidebar a{
  display:block;
  padding:12px;
- margin:6px 0;
+ margin:8px 0;
  background:#1e293b;
  border-radius:8px;
  color:white;
  text-decoration:none;
 }
-.sidebar a:hover{background:#6366f1}
+
+.sidebar a:hover{
+ background:#6366f1;
+}
 
 /* MAIN */
-.main{flex:1;padding:20px}
+.main{
+ flex:1;
+ padding:20px;
+}
 
-/* HEADER */
-.header{
- font-size:20px;
+/* FILTER */
+.filters{
+ display:flex;
+ gap:10px;
  margin-bottom:20px;
+}
+
+select,input{
+ padding:8px;
+ border-radius:6px;
 }
 
 /* CARDS */
 .cards{
- display:grid;
- grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+ display:flex;
  gap:15px;
 }
 
 .card{
+ flex:1;
  padding:20px;
- border-radius:12px;
  background:#1e293b;
+ border-radius:12px;
+ text-align:center;
 }
 
-/* SECTION */
-.section{
+/* BOX */
+.box{
  margin-top:20px;
- background:#1e293b;
  padding:20px;
+ background:#1e293b;
  border-radius:12px;
-}
-
-/* FILTER */
-select,input{
- padding:8px;
- margin:5px;
- border-radius:6px;
 }
 
 /* TABLE */
-table{width:100%;margin-top:10px}
-td,th{padding:10px;border-bottom:1px solid #334155}
+table{
+ width:100%;
+ margin-top:10px;
+ border-collapse:collapse;
+}
+td,th{
+ padding:10px;
+ border-bottom:1px solid #334155;
+}
 </style>
 </head>
 
@@ -213,44 +233,91 @@ td,th{padding:10px;border-bottom:1px solid #334155}
 
 <div class="sidebar">
 <h2>📊 Dashboard</h2>
-<a href="/subject">Subject</a>
-<a href="/class">Class</a>
+<a href="/subject">Subject Teacher</a>
+<a href="/class">Class Teacher</a>
 <a href="/hod">HOD</a>
 </div>
 
 <div class="main">
 
-<div class="header">${title}</div>
+<h2>${title}</h2>
 
-<div>
-<select id="subject"></select>
+<!-- FILTER -->
+<div class="filters">
 <select id="className"></select>
+<select id="subject"></select>
 <select id="batch"></select>
 ${mode==="class" ? '<input id="student" placeholder="Search Student">' : ''}
 <button onclick="apply()">Apply</button>
 </div>
 
+${mode==="hod" || mode==="subject" ? `
+
+<!-- ===== IMAGE 1 STYLE ===== -->
+
 <div class="cards">
-<div class="card">Lectures <h2 id="lec"></h2></div>
-<div class="card">Today <h2 id="today"></h2></div>
-<div class="card">Today % <h2 id="todayP"></h2></div>
-<div class="card">Defaulters <h2 id="def"></h2></div>
-<div class="card">Students <h2 id="stu"></h2></div>
+<div class="card">
+<h3>Total Present</h3>
+<h2 id="present"></h2>
 </div>
 
-<div class="section">
-<h3>Insights</h3>
-<p>🏆 Best Subject: <b id="best"></b></p>
-<p>📉 Lowest Subject: <b id="low"></b></p>
+<div class="card">
+<h3>Total Absent</h3>
+<h2 id="absent"></h2>
 </div>
 
-<div class="section">
+<div class="card">
+<h3>% Attendance</h3>
+<h2 id="percent"></h2>
+</div>
+</div>
+
+<div class="box">
+<h3>Weekly Attendance</h3>
+<p id="weekly">Data loading...</p>
+</div>
+
+<div class="box">
+<h3>Daily Subject-wise Attendance</h3>
+<table>
+<tr><th>Subject</th><th>Present</th></tr>
+<tbody id="subjectTable"></tbody>
+</table>
+</div>
+
+` : `
+
+<!-- ===== IMAGE 2 STYLE ===== -->
+
+<div class="cards">
+<div class="card">
+<h3>Total Present</h3>
+<h2 id="present"></h2>
+</div>
+
+<div class="card">
+<h3>Total Lectures</h3>
+<h2 id="lec"></h2>
+</div>
+</div>
+
+<div class="box">
+<h3>Subject-wise Attendance</h3>
+<table>
+<tr><th>Subject</th><th>Count</th></tr>
+<tbody id="subjectTable"></tbody>
+</table>
+</div>
+
+<div class="box">
 <h3>Student Report</h3>
 <table>
 <tr><th>Name</th><th>%</th><th>Status</th></tr>
 <tbody id="table"></tbody>
 </table>
 </div>
+
+`}
 
 </div>
 
@@ -282,26 +349,38 @@ async function load(){
  batch.innerHTML='<option>Batch</option>';
  d.batches.forEach(b=>batch.innerHTML+=\`<option>\${b}</option>\`);
 
- lec.innerText=d.totalLectures;
- today.innerText=d.todayCount;
- todayP.innerText=d.todayPercent+"%";
- def.innerText=d.defaulters;
- stu.innerText=d.totalStudents;
+ let present=d.todayCount || 0;
+ let total=d.totalStudents || 1;
+ let percent=((present/total)*100).toFixed(1);
 
- best.innerText=d.best || "-";
- low.innerText=d.low || "-";
+ presentEl.innerText=present;
+ absent.innerText=total-present;
+ percentEl.innerText=percent+"%";
 
+ lec && (lec.innerText=d.totalLectures);
+
+ /* SUBJECT TABLE */
+ subjectTable.innerHTML="";
+ Object.entries(d.subjectWise || {}).forEach(([s,v])=>{
+  subjectTable.innerHTML+=\`<tr><td>\${s}</td><td>\${v}</td></tr>\`;
+ });
+
+ /* STUDENT TABLE */
+ if(table){
  table.innerHTML="";
- Object.entries(d.studentData).forEach(([n,v])=>{
+ Object.entries(d.studentData || {}).forEach(([n,v])=>{
   table.innerHTML+=\`<tr>
   <td>\${n}</td>
   <td>\${v.percent}%</td>
   <td style="color:\${v.def?'red':'lime'}">\${v.def?'Defaulter':'OK'}</td>
   </tr>\`;
  });
+ }
+
 }
 
 load();
+setInterval(load,3000);
 
 </script>
 
@@ -309,7 +388,6 @@ load();
 </html>
 `;
 }
-
 /* ================= ROUTES ================= */
 
 app.get("/dashboard",(req,res)=>res.redirect("/subject"));
