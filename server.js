@@ -72,16 +72,15 @@ function getData(filters){
    date:p[0],
    name:p[3],
    className:p[5],
-   batch:p[6],
    subject:p[7]
   };
  }).filter(x=>x);
 
  if(filters.className) records=records.filter(r=>r.className===filters.className);
  if(filters.subject) records=records.filter(r=>r.subject===filters.subject);
- if(filters.student) records=records.filter(r=>r.name===filters.student);
+ if(filters.student) records=records.filter(r=>r.name.toLowerCase().includes(filters.student.toLowerCase()));
 
- let subjectWise={},studentWise={},daily={};
+ let subjectWise={}, daily={}, studentWise={};
 
  records.forEach(r=>{
   subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
@@ -92,7 +91,7 @@ function getData(filters){
  let dates=Object.keys(daily).slice(-7);
  let weekly=dates.map(d=>daily[d]);
 
- let totalStudents=Object.keys(studentWise).length||1;
+ let totalStudents=[...new Set(records.map(r=>r.name))].length || 1;
  let present=records.length;
  let absent=totalStudents-present;
  let percent=((present/totalStudents)*100).toFixed(1);
@@ -101,8 +100,7 @@ function getData(filters){
   present,absent,percent,
   subjectWise,
   weeklyLabels:dates,
-  weeklyData:weekly,
-  studentWise
+  weeklyData:weekly
  };
 }
 
@@ -112,9 +110,8 @@ app.get("/api",(req,res)=>{
 
  const subjects=[...new Set(timetable.map(t=>t.subject))];
  const classes=["SE","TE","BE"];
- const studentsList=[...new Set(students.map(s=>s.student_name))];
 
- res.json({...data,subjects,classes,studentsList});
+ res.json({...data,subjects,classes});
 });
 
 /* ================= UI ================= */
@@ -166,7 +163,7 @@ body{margin:0;font-family:Segoe UI;background:#0f172a;color:white;display:flex}
 /* SECTION */
 .section{margin-top:20px;background:#1e293b;padding:20px;border-radius:10px}
 
-select{padding:8px;margin:5px}
+input{padding:8px;margin:5px}
 
 </style>
 </head>
@@ -178,6 +175,7 @@ select{padding:8px;margin:5px}
 
 <select id="className"></select>
 
+<a href="/dashboard">Home</a>
 <a href="/subject">Subject Teacher</a>
 <a href="/class">Class Teacher</a>
 <a href="/hod">HOD</a>
@@ -187,16 +185,12 @@ select{padding:8px;margin:5px}
 
 <h2>${title}</h2>
 
-${mode!=="main" ? `
-<select id="student"></select>
-<select id="subject"></select>
-<button onclick="load()">Apply</button>
-` : ``}
+<input id="student" placeholder="Search Student Name">
 
 <div class="cards">
 <div class="card">Present <h2 id="present"></h2></div>
 <div class="card">Absent <h2 id="absent"></h2></div>
-<div class="card">% Attendance <h2 id="percent"></h2></div>
+<div class="card">% <h2 id="percent"></h2></div>
 </div>
 
 <div class="section">
@@ -216,46 +210,34 @@ let lineChart,barChart;
 async function load(){
 
  let cls=document.getElementById("className").value;
+ let student=document.getElementById("student").value;
 
- let url="/api?className="+cls+
- "&subject="+(subject?subject.value:"")+
- "&student="+(student?student.value:"");
-
- let d=await fetch(url).then(r=>r.json());
+ let d=await fetch("/api?className="+cls+"&student="+student).then(r=>r.json());
 
  className.innerHTML="";
  d.classes.forEach(c=>className.innerHTML+=\`<option>\${c}</option>\`);
-
- if(subject){
- subject.innerHTML="";
- d.subjects.forEach(s=>subject.innerHTML+=\`<option>\${s}</option>\`);
- }
-
- if(student){
- student.innerHTML="";
- d.studentsList.forEach(s=>student.innerHTML+=\`<option>\${s}</option>\`);
- }
 
  present.innerText=d.present;
  absent.innerText=d.absent;
  percent.innerText=d.percent+"%";
 
+ /* FIXED GRAPH */
  if(lineChart) lineChart.destroy();
- lineChart=new Chart(lineChartCanvas,{
+ lineChart=new Chart(document.getElementById("lineChart"),{
   type:"line",
   data:{labels:d.weeklyLabels,datasets:[{data:d.weeklyData}]}
  });
 
  if(barChart) barChart.destroy();
- barChart=new Chart(barChartCanvas,{
+ barChart=new Chart(document.getElementById("barChart"),{
   type:"bar",
   data:{labels:Object.keys(d.subjectWise),datasets:[{data:Object.values(d.subjectWise)}]}
  });
 
 }
 
-load();
 setInterval(load,3000);
+load();
 
 </script>
 
@@ -265,8 +247,8 @@ setInterval(load,3000);
 }
 
 /* ================= ROUTES ================= */
-app.get("/dashboard",(req,res)=>res.redirect("/hod"));
-app.get("/",(req,res)=>res.redirect("/hod"));
+app.get("/",(req,res)=>res.redirect("/dashboard"));
+app.get("/dashboard",(req,res)=>res.send(page("Main Dashboard","main")));
 app.get("/subject",(req,res)=>res.send(page("Subject Teacher View","subject")));
 app.get("/class",(req,res)=>res.send(page("Class Teacher View","class")));
 app.get("/hod",(req,res)=>res.send(page("HOD Dashboard","hod")));
