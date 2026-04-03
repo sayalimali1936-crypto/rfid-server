@@ -74,93 +74,87 @@ app.get("/api",(req,res)=>{
 });
 
 /* ================= UI TEMPLATE ================= */
-function layout(title,content){
+function page(title,mode){
 return `
+<!DOCTYPE html>
 <html>
 <head>
-<style>
+<meta charset="UTF-8">
+<title>${title}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-body{
- margin:0;
- font-family:Segoe UI;
- background:linear-gradient(135deg,#020617,#0f172a);
- color:white;
- display:flex;
+<style>
+body {
+    font-family: Arial;
+    margin: 0;
+    background: #f4f6f9;
+}
+
+/* HEADER */
+.header {
+    text-align: center;
+    padding: 20px;
+    font-size: 26px;
+    font-weight: bold;
 }
 
 /* SIDEBAR */
-.sidebar{
- width:240px;
- background:#020617;
- padding:20px;
+.sidebar {
+    position: fixed;
+    width: 200px;
+    height: 100%;
+    background: #111827;
+    color: white;
+    padding: 20px;
 }
 
-.sidebar h2{margin-bottom:20px}
-
-.sidebar a{
- display:block;
- padding:12px;
- margin:8px 0;
- background:#1e293b;
- border-radius:10px;
- color:white;
- text-decoration:none;
- transition:.3s;
+.sidebar a {
+    display: block;
+    padding: 10px;
+    margin: 8px 0;
+    background: #1f2937;
+    border-radius: 6px;
+    text-decoration: none;
+    color: white;
 }
 
-.sidebar a:hover{
- background:#6366f1;
- transform:translateX(5px);
+.sidebar a:hover {
+    background: #3b82f6;
 }
 
 /* MAIN */
-.main{
- flex:1;
- padding:20px;
- animation:fade .5s ease;
+.main {
+    margin-left: 220px;
 }
 
-@keyframes fade{
- from{opacity:0;transform:translateY(10px)}
- to{opacity:1;transform:translateY(0)}
+/* GRID */
+.dashboard {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    padding: 20px;
 }
 
 /* CARDS */
-.cards{
- display:flex;
- gap:15px;
- flex-wrap:wrap;
+.card {
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
-.card{
- flex:1;
- min-width:180px;
- padding:20px;
- border-radius:12px;
- background:#1e293b;
- text-align:center;
- transition:.3s;
+.big {
+    font-size: 22px;
+    font-weight: bold;
 }
 
-.card:hover{
- transform:scale(1.05);
-}
-
-/* TABLE */
-table{
- width:100%;
- margin-top:15px;
- border-collapse:collapse;
-}
-td,th{
- padding:10px;
- border-bottom:1px solid #334155;
-}
-
-select{
- padding:8px;
- margin:5px;
- border-radius:6px;
+/* CHART */
+.chart-container {
+    grid-column: span 2;
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
 }
 
 </style>
@@ -169,19 +163,101 @@ select{
 <body>
 
 <div class="sidebar">
-<h2>📊 System</h2>
-
+<h2>Dashboard</h2>
 <a href="/dashboard">Home</a>
 <a href="/faculty">Faculty</a>
 <a href="/hod">HOD</a>
 <a href="/principal">Principal</a>
-
 </div>
 
 <div class="main">
-<h2>${title}</h2>
-${content}
+
+<div class="header">${title}</div>
+
+<div class="dashboard">
+
+<div class="card">
+<h3>Total Students</h3>
+<div class="big" id="total"></div>
 </div>
+
+<div class="card">
+<h3>Present</h3>
+<div class="big" id="present"></div>
+</div>
+
+<div class="card">
+<h3>Absent</h3>
+<div class="big" id="absent"></div>
+</div>
+
+<div class="card">
+<h3>Attendance %</h3>
+<div class="big" id="percentage"></div>
+</div>
+
+<div class="chart-container">
+<h3>Weekly Attendance</h3>
+<canvas id="barChart"></canvas>
+</div>
+
+<div class="chart-container">
+<h3>Subject-wise Attendance</h3>
+<canvas id="pieChart"></canvas>
+</div>
+
+</div>
+</div>
+
+<script>
+
+let barChart, pieChart;
+
+async function load(){
+
+ let d = await fetch("/api").then(r=>r.json());
+
+ let total = d.totalStudents || 1;
+ let present = d.present || 0;
+ let absent = total - present;
+
+ document.getElementById("total").innerText = total;
+ document.getElementById("present").innerText = present;
+ document.getElementById("absent").innerText = absent;
+ document.getElementById("percentage").innerText =
+     Math.round((present/total)*100) + "%";
+
+ /* BAR CHART */
+ if(barChart) barChart.destroy();
+ barChart = new Chart(document.getElementById("barChart"), {
+    type: 'bar',
+    data: {
+        labels: d.weeklyLabels || [],
+        datasets: [{
+            label: "Attendance",
+            data: d.weeklyData || []
+        }]
+    }
+ });
+
+ /* PIE CHART */
+ if(pieChart) pieChart.destroy();
+ pieChart = new Chart(document.getElementById("pieChart"), {
+    type: 'pie',
+    data: {
+        labels: Object.keys(d.subjectWise || {}),
+        datasets: [{
+            data: Object.values(d.subjectWise || {})
+        }]
+    }
+ });
+
+}
+
+load();
+setInterval(load,3000);
+
+</script>
 
 </body>
 </html>
