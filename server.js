@@ -8,6 +8,7 @@ const PORT = process.env.PORT || 10000;
 const csvPath = path.join(__dirname, "attendance.csv");
 const timetablePath = path.join(__dirname, "Time_Table.csv");
 const studentsPath = path.join(__dirname, "Students.csv");
+const staffPath = path.join(__dirname, "Staff_Master.csv");
 
 /* ================= INIT ================= */
 if (!fs.existsSync(csvPath)) {
@@ -30,6 +31,29 @@ function loadCSV(file){
 
 const students = loadCSV(studentsPath);
 const timetable = loadCSV(timetablePath);
+const staff = loadCSV(staffPath);
+
+/* ================= LOGIN ================= */
+app.get("/login",(req,res)=>{
+res.send(`
+<h2>Login</h2>
+<select id="role">
+<option value="faculty">Faculty</option>
+<option value="hod">HOD</option>
+<option value="principal">Principal</option>
+</select><br>
+<input id="name" placeholder="Enter Name"><br>
+<button onclick="go()">Login</button>
+
+<script>
+function go(){
+ let role=document.getElementById("role").value;
+ let name=document.getElementById("name").value;
+ window.location="/"+role+"?name="+name;
+}
+</script>
+`);
+});
 
 /* ================= DATA ================= */
 function getData(filters){
@@ -49,15 +73,15 @@ function getData(filters){
  if(filters.className) records=records.filter(r=>r.className===filters.className);
  if(filters.subject) records=records.filter(r=>r.subject===filters.subject);
 
- let subjectWise={}, studentSet=new Set();
+ let subjectWise={}, studentsSet=new Set();
 
  records.forEach(r=>{
   subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
-  studentSet.add(r.name);
+  studentsSet.add(r.name);
  });
 
  let present=records.length;
- let totalStudents=studentSet.size || 1;
+ let totalStudents=studentsSet.size || 1;
  let percent=((present/totalStudents)*100).toFixed(1);
 
  return {present,totalStudents,percent,subjectWise};
@@ -74,87 +98,92 @@ app.get("/api",(req,res)=>{
 });
 
 /* ================= UI TEMPLATE ================= */
-function page(title,mode){
+function layout(title,content){
 return `
-<!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>${title}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-body {
-    font-family: Arial;
-    margin: 0;
-    background: #f4f6f9;
-}
-
-/* HEADER */
-.header {
-    text-align: center;
-    padding: 20px;
-    font-size: 26px;
-    font-weight: bold;
+body{
+ margin:0;
+ font-family:Segoe UI;
+ background:linear-gradient(135deg,#020617,#0f172a);
+ color:white;
+ display:flex;
 }
 
 /* SIDEBAR */
-.sidebar {
-    position: fixed;
-    width: 200px;
-    height: 100%;
-    background: #111827;
-    color: white;
-    padding: 20px;
+.sidebar{
+ width:240px;
+ background:#020617;
+ padding:20px;
 }
 
-.sidebar a {
-    display: block;
-    padding: 10px;
-    margin: 8px 0;
-    background: #1f2937;
-    border-radius: 6px;
-    text-decoration: none;
-    color: white;
+.sidebar h2{margin-bottom:20px}
+
+.sidebar a{
+ display:block;
+ padding:12px;
+ margin:8px 0;
+ background:#1e293b;
+ border-radius:10px;
+ color:white;
+ text-decoration:none;
+ transition:.3s;
 }
 
-.sidebar a:hover {
-    background: #3b82f6;
+.sidebar a:hover{
+ background:#6366f1;
+ transform:translateX(5px);
 }
 
 /* MAIN */
-.main {
-    margin-left: 220px;
+.main{
+ flex:1;
+ padding:20px;
+ animation:fade .5s ease;
 }
 
-/* GRID */
-.dashboard {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
-    padding: 20px;
+@keyframes fade{
+ from{opacity:0;transform:translateY(10px)}
+ to{opacity:1;transform:translateY(0)}
 }
 
 /* CARDS */
-.card {
-    background: white;
-    padding: 15px;
-    border-radius: 10px;
-    text-align: center;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+.cards{
+ display:flex;
+ gap:15px;
+ flex-wrap:wrap;
 }
 
-.big {
-    font-size: 22px;
-    font-weight: bold;
+.card{
+ flex:1;
+ min-width:180px;
+ padding:20px;
+ border-radius:12px;
+ background:#1e293b;
+ text-align:center;
+ transition:.3s;
 }
 
-/* CHART */
-.chart-container {
-    grid-column: span 2;
-    background: white;
-    padding: 15px;
-    border-radius: 10px;
+.card:hover{
+ transform:scale(1.05);
+}
+
+/* TABLE */
+table{
+ width:100%;
+ margin-top:15px;
+ border-collapse:collapse;
+}
+td,th{
+ padding:10px;
+ border-bottom:1px solid #334155;
+}
+
+select{
+ padding:8px;
+ margin:5px;
+ border-radius:6px;
 }
 
 </style>
@@ -163,112 +192,38 @@ body {
 <body>
 
 <div class="sidebar">
-<h2>Dashboard</h2>
+<h2>📊 System</h2>
+
 <a href="/dashboard">Home</a>
 <a href="/faculty">Faculty</a>
 <a href="/hod">HOD</a>
 <a href="/principal">Principal</a>
+<a href="/login">Logout</a>
+
 </div>
 
 <div class="main">
-
-<div class="header">${title}</div>
-
-<div class="dashboard">
-
-<div class="card">
-<h3>Total Students</h3>
-<div class="big" id="total"></div>
+<h2>${title}</h2>
+${content}
 </div>
-
-<div class="card">
-<h3>Present</h3>
-<div class="big" id="present"></div>
-</div>
-
-<div class="card">
-<h3>Absent</h3>
-<div class="big" id="absent"></div>
-</div>
-
-<div class="card">
-<h3>Attendance %</h3>
-<div class="big" id="percentage"></div>
-</div>
-
-<div class="chart-container">
-<h3>Weekly Attendance</h3>
-<canvas id="barChart"></canvas>
-</div>
-
-<div class="chart-container">
-<h3>Subject-wise Attendance</h3>
-<canvas id="pieChart"></canvas>
-</div>
-
-</div>
-</div>
-
-<script>
-
-let barChart, pieChart;
-
-async function load(){
-
- let d = await fetch("/api").then(r=>r.json());
-
- let total = d.totalStudents || 1;
- let present = d.present || 0;
- let absent = total - present;
-
- document.getElementById("total").innerText = total;
- document.getElementById("present").innerText = present;
- document.getElementById("absent").innerText = absent;
- document.getElementById("percentage").innerText =
-     Math.round((present/total)*100) + "%";
-
- /* BAR CHART */
- if(barChart) barChart.destroy();
- barChart = new Chart(document.getElementById("barChart"), {
-    type: 'bar',
-    data: {
-        labels: d.weeklyLabels || [],
-        datasets: [{
-            label: "Attendance",
-            data: d.weeklyData || []
-        }]
-    }
- });
-
- /* PIE CHART */
- if(pieChart) pieChart.destroy();
- pieChart = new Chart(document.getElementById("pieChart"), {
-    type: 'pie',
-    data: {
-        labels: Object.keys(d.subjectWise || {}),
-        datasets: [{
-            data: Object.values(d.subjectWise || {})
-        }]
-    }
- });
-
-}
-
-load();
-setInterval(load,3000);
-
-</script>
 
 </body>
 </html>
 `;
 }
 
-/* ================= FACULTY VIEW ================= */
+/* ================= FACULTY ================= */
 app.get("/faculty",(req,res)=>{
-res.send(layout("Faculty View",`
 
-<select id="subject"></select>
+ let teacher=req.query.name || "";
+
+ // auto subject detection
+ let subject=timetable.find(t=>t.staff_name===teacher)?.subject || "";
+
+res.send(layout("Faculty Dashboard",`
+
+<h3>Welcome ${teacher}</h3>
+<p>Subject: <b>${subject}</b></p>
 
 <div class="cards">
 <div class="card">Present <h2 id="present"></h2></div>
@@ -283,10 +238,7 @@ res.send(layout("Faculty View",`
 
 <script>
 async function load(){
- let d=await fetch("/api?subject="+subject.value).then(r=>r.json());
-
- subject.innerHTML='<option value="">Subject</option>';
- d.subjects.forEach(s=>subject.innerHTML+=\`<option>\${s}</option>\`);
+ let d=await fetch("/api?subject=${subject}").then(r=>r.json());
 
  present.innerText=d.present;
  total.innerText=d.totalStudents;
@@ -303,12 +255,11 @@ load();
 `));
 });
 
-/* ================= HOD VIEW ================= */
+/* ================= HOD ================= */
 app.get("/hod",(req,res)=>{
-res.send(layout("HOD View",`
+res.send(layout("HOD Dashboard",`
 
 <select id="className"></select>
-<select id="subject"></select>
 
 <div class="cards">
 <div class="card">Present <h2 id="present"></h2></div>
@@ -324,13 +275,10 @@ res.send(layout("HOD View",`
 <script>
 async function load(){
 
- let d=await fetch("/api?className="+className.value+"&subject="+subject.value).then(r=>r.json());
+ let d=await fetch("/api?className="+className.value).then(r=>r.json());
 
  className.innerHTML="";
  d.classes.forEach(c=>className.innerHTML+=\`<option>\${c}</option>\`);
-
- subject.innerHTML='<option value="">Subject</option>';
- d.subjects.forEach(s=>subject.innerHTML+=\`<option>\${s}</option>\`);
 
  present.innerText=d.present;
  total.innerText=d.totalStudents;
@@ -349,24 +297,16 @@ load();
 
 /* ================= PRINCIPAL ================= */
 app.get("/principal",(req,res)=>{
-res.send(layout("Principal View",`
+res.send(layout("Principal Dashboard",`
 
 <div class="cards">
-
-<div class="card" onclick="go('computer')">Computer</div>
-<div class="card" onclick="go('electrical')">Electrical</div>
-<div class="card" onclick="go('civil')">Civil</div>
-<div class="card" onclick="go('mechanical')">Mechanical</div>
-<div class="card" onclick="go('entc')">ENTC</div>
-<div class="card" onclick="go('firstyear')">First Year</div>
-
+<div class="card">Electrical</div>
+<div class="card">Computer</div>
+<div class="card">Civil</div>
+<div class="card">Mechanical</div>
+<div class="card">ENTC</div>
+<div class="card">First Year</div>
 </div>
-
-<script>
-function go(dep){
- window.location="/hod?department="+dep;
-}
-</script>
 
 `));
 });
@@ -375,11 +315,11 @@ function go(dep){
 app.get("/dashboard",(req,res)=>{
 res.send(layout("Main Dashboard",`
 <div class="cards">
-<div class="card">Welcome to Smart Attendance System</div>
+<div class="card">Smart RFID Attendance System</div>
 </div>
 `));
 });
 
 /* ================= START ================= */
-app.get("/",(req,res)=>res.redirect("/dashboard"));
+app.get("/",(req,res)=>res.redirect("/login"));
 app.listen(PORT,()=>console.log("🚀 Running"));
