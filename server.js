@@ -40,11 +40,13 @@ function getAnalytics(filters) {
         return { date: p[0], name: p[3], className: p[5], batch: p[6], subject: p[7] };
     }).filter(x => x);
 
-    // Filter Logic
+    // Apply Global Filters
     if (filters.className) records = records.filter(r => r.className === filters.className);
     if (filters.subject) records = records.filter(r => r.subject === filters.subject);
+    if (filters.studentName) {
+        records = records.filter(r => r.name.toLowerCase().includes(filters.studentName.toLowerCase()));
+    }
 
-    // Subject-wise percentage calculation
     let subjectCounts = {};
     records.forEach(r => { subjectCounts[r.subject] = (subjectCounts[r.subject] || 0) + 1; });
     
@@ -55,8 +57,7 @@ function getAnalytics(filters) {
 
     let present = records.length;
     let totalCapacity = 60; 
-    let calcPercent = totalCapacity > 0 ? (present / totalCapacity) * 100 : 0;
-    let percent = Math.min(100, calcPercent).toFixed(1);
+    let percent = Math.min(100, (present / totalCapacity) * 100).toFixed(1);
 
     return { 
         present, 
@@ -68,8 +69,9 @@ function getAnalytics(filters) {
     };
 }
 
-/* ================= UI SHELL (Professional Aero-Light) ================= */
+/* ================= UI SHELL (Professional & Vibrant) ================= */
 function layout(title, content, currentDept = "") {
+    const subjects = [...new Set(timetable.map(t => t.subject))];
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -78,79 +80,65 @@ function layout(title, content, currentDept = "") {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root { 
-            --primary: #4f46e5; --secondary: #6366f1; --success: #10b981; 
-            --danger: #ef4444; --warning: #f59e0b; --bg: #f9fafb; --sidebar: #ffffff;
+            --primary: #6366f1; --success: #10b981; --danger: #f43f5e; --warning: #f59e0b;
+            --bg: #f8fafc; --sidebar: #ffffff; --text: #1e293b; 
         }
-        body { margin:0; font-family:'Inter', sans-serif; background:var(--bg); color:#1f2937; display:flex; height:100vh; overflow:hidden; }
+        body { margin:0; font-family:'Plus Jakarta Sans', sans-serif; background:var(--bg); color:var(--text); display:flex; height:100vh; overflow:hidden; }
         
         /* SIDEBAR */
-        .sidebar { width:260px; background:var(--sidebar); border-right:1px solid #e5e7eb; padding:25px; display:flex; flex-direction:column; box-shadow: 4px 0 10px rgba(0,0,0,0.02); }
-        .logo { font-weight:800; color:var(--primary); font-size:1.4rem; margin-bottom:40px; display:flex; align-items:center; gap:10px; letter-spacing:-0.5px; }
-        .nav-label { font-size:0.7rem; font-weight:800; color:#9ca3af; text-transform:uppercase; margin:20px 0 8px 10px; letter-spacing:1px; }
-        .nav-item { padding:12px 15px; border-radius:12px; color:#4b5563; text-decoration:none; display:flex; align-items:center; gap:12px; transition:0.2s; font-weight:600; font-size:0.9rem; }
-        .nav-item:hover { background:#f3f4f6; color:var(--primary); }
-        .nav-item.active { background:var(--primary); color:white; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2); }
+        .sidebar { width:270px; background:var(--sidebar); border-right:1px solid #e2e8f0; padding:30px 20px; display:flex; flex-direction:column; box-shadow: 4px 0 15px rgba(0,0,0,0.03); }
+        .logo { font-weight:800; color:var(--primary); font-size:1.4rem; margin-bottom:40px; display:flex; align-items:center; gap:12px; }
+        .nav-label { font-size:0.7rem; font-weight:800; color:#94a3b8; text-transform:uppercase; margin:20px 0 10px 10px; letter-spacing:1px; }
+        .nav-item { padding:12px 18px; border-radius:14px; color:#64748b; text-decoration:none; display:flex; align-items:center; gap:12px; transition:0.2s; font-weight:600; font-size:0.95rem; }
+        .nav-item:hover { background:#f1f5f9; color:var(--primary); }
+        .nav-item.active { background:linear-gradient(135deg, var(--primary), #4f46e5); color:white; box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3); }
 
         /* MAIN CONTENT */
-        .main { flex:1; overflow-y:auto; padding:40px; }
-        .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:35px; }
-        .dept-tag { background: #eef2ff; color: var(--primary); padding: 6px 16px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; border: 1px solid #e0e7ff; }
-
-        /* KPI CARDS */
-        .stats-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:20px; margin-bottom:30px; }
-        .card { background:white; padding:25px; border-radius:18px; border:1px solid #f3f4f6; box-shadow:0 4px 6px -1px rgba(0,0,0,0.03); position:relative; }
-        .card h4 { margin:0; font-size:0.75rem; color:#6b7280; text-transform:uppercase; display:flex; align-items:center; gap:8px; letter-spacing:0.5px; }
-        .card h2 { margin:12px 0 0 0; font-size:1.8rem; font-weight:800; color:#111827; }
+        .main { flex:1; overflow-y:auto; padding:40px; scroll-behavior: smooth; }
+        .header { display:flex; justify-content:space-between; align-items:end; margin-bottom:35px; }
         
-        .accent-bar { position:absolute; top:0; left:0; width:100%; height:4px; border-radius:18px 18px 0 0; }
+        /* FILTER TOOLBAR */
+        .toolbar { background:white; padding:18px 25px; border-radius:20px; border:1px solid #f1f5f9; display:flex; gap:15px; align-items:center; margin-bottom:30px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.02); }
+        select, input { padding:10px 18px; border-radius:12px; border:1px solid #e2e8f0; font-weight:700; color:var(--text); outline:none; font-size:0.85rem; background:#f8fafc; }
+        .search-container { flex:1; display:flex; align-items:center; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:0 15px; }
+        .search-container input { border:none; background:transparent; width:100%; }
 
-        /* WIDGETS */
-        .widget-box { background:white; padding:25px; border-radius:20px; border:1px solid #f3f4f6; box-shadow:0 10px 15px -3px rgba(0,0,0,0.04); margin-bottom:25px; }
-        .widget-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom: 2px solid #f9fafb; padding-bottom:15px; }
+        /* STATUS CARDS */
+        .stats-row { display:grid; grid-template-columns: repeat(4, 1fr); gap:20px; margin-bottom:30px; }
+        .card { background:white; padding:25px; border-radius:22px; border:1px solid #f1f5f9; box-shadow:0 10px 15px -3px rgba(0,0,0,0.03); position:relative; overflow:hidden; }
+        .card h4 { margin:0; font-size:0.75rem; color:#94a3b8; text-transform:uppercase; display:flex; align-items:center; gap:8px; font-weight:800; }
+        .card h2 { margin:15px 0 0 0; font-size:2rem; font-weight:800; }
+        .card-icon { position:absolute; top:20px; right:20px; font-size:1.2rem; opacity:0.2; }
+
+        .widget { background:white; padding:30px; border-radius:24px; border:1px solid #f1f5f9; box-shadow:0 20px 25px -5px rgba(0,0,0,0.04); }
+        .animated { animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes fadeInUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
         
-        select, button { padding:10px 16px; border-radius:10px; border:1px solid #e5e7eb; font-weight:600; cursor:pointer; font-size:0.85rem; }
-        .btn-indigo { background:var(--primary); color:white; border:none; transition: 0.2s; }
-        .btn-indigo:hover { background:#4338ca; transform:translateY(-1px); }
-
-        @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-        .animated { animation: fadeIn 0.4s ease-out; }
+        .footer-rfid { margin-top: auto; font-size: 0.65rem; color: #cbd5e1; text-align: center; letter-spacing: 1px; text-transform: uppercase; }
     </style>
 </head>
 <body>
     <div class="sidebar">
-        <div class="logo"><i class="fas fa-bolt"></i> RFID DASH</div>
-        
-        <a href="/principal" class="nav-item ${title === 'Principal' ? 'active' : ''}"><i class="fas fa-home"></i> Home</a>
-        
+        <div class="logo"><i class="fas fa-compass"></i> NEXUS <span>PORTAL</span></div>
+        <a href="/principal" class="nav-item ${title === 'Principal' ? 'active' : ''}">🏢 Principal Home</a>
         ${currentDept ? `
-            <div class="nav-label">${currentDept} Dept</div>
-            <a href="/hod?dept=${currentDept}" class="nav-item"><i class="fas fa-shield-halved"></i> HOD Office 🏢</a>
-            <a href="/faculty?dept=${currentDept}" class="nav-item"><i class="fas fa-user-graduate"></i> Faculty Portal 🎓</a>
-            <a href="/reports?dept=${currentDept}" class="nav-item"><i class="fas fa-file-csv"></i> Report Center 📊</a>
+            <div class="nav-label">${currentDept} Control</div>
+            <a href="/hod?dept=${currentDept}" class="nav-item">🛡️ HOD Analytics</a>
+            <a href="/faculty?dept=${currentDept}" class="nav-item">🎓 Faculty Hub</a>
+            <a href="/reports?dept=${currentDept}" class="nav-item">📊 Reports Center</a>
         ` : ''}
-
-        <div style="margin-top:auto">
-            <a href="/login" class="nav-item" style="color:var(--danger)"><i class="fas fa-power-off"></i> Logout</a>
-        </div>
+        <div class="footer-rfid">RFID-Powered Infrastructure v2.6.4</div>
+        <a href="/login" class="nav-item" style="color:var(--danger); margin-top:20px"><i class="fas fa-power-off"></i> Logout</a>
     </div>
-
     <div class="main animated">
         <div class="header">
-            <div>
-                <h1 style="margin:0; font-size:1.6rem; letter-spacing:-0.5px">${title}</h1>
-                <p style="color:#6b7280; margin:5px 0 0 0">RFID Real-Time Monitoring System</p>
-            </div>
-            <div style="text-align:right">
-                <span class="dept-tag">${currentDept || 'System Admin'}</span>
-                <div id="live-time" style="font-weight:700; color:var(--primary); margin-top:8px"></div>
-            </div>
+            <div><h1 style="margin:0; font-size:1.8rem; color:var(--primary)">${title}</h1><p style="color:#94a3b8; font-weight:600">Department: ${currentDept || 'Campus Administration'}</p></div>
+            <div id="clock" style="font-size:1.2rem; font-weight:800; color:var(--primary)"></div>
         </div>
         ${content}
     </div>
-
     <script>
-        function updateTime() { document.getElementById('live-time').innerText = new Date().toLocaleTimeString(); }
-        setInterval(updateTime, 1000); updateTime();
+        setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
     </script>
 </body>
 </html>
@@ -160,17 +148,14 @@ function layout(title, content, currentDept = "") {
 /* ================= PRINCIPAL VIEW ================= */
 app.get("/principal", (req, res) => {
     const depts = ["Electrical", "Computer", "Civil", "Mechanical", "ENTC", "1st Year"];
-    const icons = ["fa-bolt", "fa-laptop-code", "fa-trowel-bricks", "fa-gears", "fa-microchip", "fa-book-open"];
-    
+    const colors = ["#6366f1", "#10b981", "#f59e0b", "#f43f5e", "#8b5cf6", "#06b6d4"];
     const content = `
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:25px; margin-top:20px">
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:25px; margin-top:10px">
             ${depts.map((d, i) => `
                 <a href="/hod?dept=${d}" style="text-decoration:none; color:inherit">
-                    <div class="card" style="text-align:center; padding:45px; cursor:pointer; transition:0.3s">
-                        <div class="accent-bar" style="background:var(--primary)"></div>
-                        <i class="fas ${icons[i]} fa-3x" style="color:var(--primary); margin-bottom:20px"></i>
-                        <h2 style="margin:0; font-size:1.3rem">${d}</h2>
-                        <p style="color:#6b7280; font-size:0.8rem; margin-top:10px">Access Local Dashboards <i class="fas fa-chevron-right"></i></p>
+                    <div class="card" style="text-align:center; padding:50px; cursor:pointer; border-top:5px solid ${colors[i]}">
+                        <h2 style="color:${colors[i]}">${d}</h2>
+                        <p style="color:#94a3b8; font-size:0.85rem; margin-top:15px; font-weight:700">Open Department Portal <i class="fas fa-arrow-right"></i></p>
                     </div>
                 </a>
             `).join("")}
@@ -182,159 +167,149 @@ app.get("/principal", (req, res) => {
 /* ================= HOD VIEW ================= */
 app.get("/hod", (req, res) => {
     const dept = req.query.dept || "General";
-    const data = getAnalytics({ className: "SE" });
+    const cls = req.query.className || "SE";
+    const sub = req.query.subject || "";
+    const data = getAnalytics({ className: cls, subject: sub });
+    const subjects = [...new Set(timetable.map(t => t.subject))];
+
     const content = `
-        <div class="stats-grid">
-            <div class="card">
-                <div class="accent-bar" style="background:var(--primary)"></div>
-                <h4>Present</h4><h2>${data.present}</h2>
-            </div>
-            <div class="card">
-                <div class="accent-bar" style="background:var(--danger)"></div>
-                <h4>Absent</h4><h2>${data.absent}</h2>
-            </div>
-            <div class="card">
-                <div class="accent-bar" style="background:var(--success)"></div>
-                <h4>Attendance %</h4><h2>${data.percent}%</h2>
-            </div>
-            <div class="card">
-                <div class="accent-bar" style="background:var(--warning)"></div>
-                <h4>Class Strength</h4><h2>60</h2>
-            </div>
+        <div class="toolbar">
+            <i class="fas fa-sliders" style="color:var(--primary)"></i>
+            <select onchange="location.href='?dept=${dept}&subject=${sub}&className='+this.value">
+                <option value="SE" ${cls==='SE'?'selected':''}>Batch: SE</option>
+                <option value="TE" ${cls==='TE'?'selected':''}>Batch: TE</option>
+                <option value="BE" ${cls==='BE'?'selected':''}>Batch: BE</option>
+            </select>
+            <select onchange="location.href='?dept=${dept}&className=${cls}&subject='+this.value">
+                <option value="">Filter by Subject</option>
+                ${subjects.map(s => `<option value="${s}" ${sub===s?'selected':''}>${s}</option>`).join("")}
+            </select>
         </div>
-        <div class="widget-box">
-            <div class="widget-header"><h3>Department Class Comparison 📊</h3></div>
-            <div style="height:280px"><canvas id="hodChart"></canvas></div>
+
+        <div class="stats-row">
+            <div class="card" style="color:var(--primary)"><h4><i class="fas fa-check"></i> Present</h4><h2>${data.present}</h2></div>
+            <div class="card" style="color:var(--danger)"><h4><i class="fas fa-xmark"></i> Absent</h4><h2>${data.absent}</h2></div>
+            <div class="card" style="color:var(--success)"><h4><i class="fas fa-percentage"></i> Score</h4><h2>${data.percent}%</h2></div>
+            <div class="card" style="color:var(--warning)"><h4><i class="fas fa-users"></i> Size</h4><h2>60</h2></div>
         </div>
+
+        <div class="widget">
+            <h3 style="margin-top:0">Subject-wise Analytics (Class ${cls})</h3>
+            <div style="height:320px"><canvas id="hodChart"></canvas></div>
+        </div>
+
         <script>
+            const subData = ${JSON.stringify(data.subjectPercents)};
             new Chart(document.getElementById('hodChart'), {
                 type: 'bar',
-                data: { labels: ['SE', 'TE', 'BE'], datasets: [{ label: 'Avg Attendance %', data: [${data.percent}, 0, 0], backgroundColor: '#4f46e5', borderRadius: 8 }] },
+                data: { 
+                    labels: Object.keys(subData).length ? Object.keys(subData) : ['N/A'], 
+                    datasets: [{ label: 'Attendance %', data: Object.values(subData).length ? Object.values(subData) : [0], backgroundColor: '#6366f1', borderRadius: 12 }] 
+                },
                 options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } }
             });
         </script>
     `;
-    res.send(layout("HOD Office", content, dept));
+    res.send(layout("HOD Dashboard", content, dept));
 });
 
 /* ================= FACULTY VIEW ================= */
 app.get("/faculty", (req, res) => {
     const dept = req.query.dept || "General";
-    const data = getAnalytics({});
-    
+    const cls = req.query.className || "SE";
+    const sub = req.query.subject || "";
+    const studSearch = req.query.studentName || "";
+    const data = getAnalytics({ className: cls, subject: sub, studentName: studSearch });
+    const subjects = [...new Set(timetable.map(t => t.subject))];
+
     const content = `
-        <div class="stats-grid">
-            <div class="card"><div class="accent-bar" style="background:var(--primary)"></div><h4>Lectures</h4><h2>0</h2></div>
-            <div class="card"><div class="accent-bar" style="background:var(--success)"></div><h4>Present</h4><h2>${data.present}</h2></div>
-            <div class="card"><div class="accent-bar" style="background:var(--danger)"></div><h4>Absent</h4><h2>${data.absent}</h2></div>
-            <div class="card"><div class="accent-bar" style="background:var(--warning)"></div><h4>Attendance %</h4><h2>${data.percent}%</h2></div>
+        <div class="toolbar">
+            <select onchange="location.href='?dept=${dept}&subject=${sub}&studentName=${studSearch}&className='+this.value">
+                <option value="SE" ${cls==='SE'?'selected':''}>Class SE</option>
+                <option value="TE" ${cls==='TE'?'selected':''}>Class TE</option>
+                <option value="BE" ${cls==='BE'?'selected':''}>Class BE</option>
+            </select>
+            <select onchange="location.href='?dept=${dept}&className=${cls}&studentName=${studSearch}&subject='+this.value">
+                <option value="">Select Subject</option>
+                ${subjects.map(s => `<option value="${s}" ${sub===s?'selected':''}>${s}</option>`).join("")}
+            </select>
+            <div class="search-container">
+                <i class="fas fa-search" style="color:#94a3b8"></i>
+                <input type="text" placeholder="Find Student..." value="${studSearch}" 
+                       onkeypress="if(event.key==='Enter') location.href='?dept=${dept}&className=${cls}&subject=${sub}&studentName='+this.value">
+            </div>
         </div>
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:25px">
-            <div class="widget-box">
-                <div class="widget-header"><h3>Subject Wise Attendance % 📈</h3></div>
-                <div style="height:250px"><canvas id="subjChart"></canvas></div>
-            </div>
-            <div class="widget-box">
-                <div class="widget-header"><h3>Class History Trend 📉</h3></div>
-                <div style="height:250px"><canvas id="trendChart"></canvas></div>
-            </div>
+        <div class="stats-row">
+            <div class="card" style="border-left:6px solid var(--primary)"><h4>Scans Found</h4><h2>${data.records.length}</h2></div>
+            <div class="card" style="border-left:6px solid var(--success)"><h4>Success Rate</h4><h2>${data.percent}%</h2></div>
+            <div class="card" style="border-left:6px solid var(--warning)"><h4>Active Subjects</h4><h2>${Object.keys(data.subjectPercents).length}</h2></div>
+            <div class="card" style="border-left:6px solid var(--danger)"><h4>Target</h4><h2>60</h2></div>
+        </div>
+
+        <div class="widget">
+            <h3 style="margin:0 0 20px 0">Academic Scan History 📈</h3>
+            <div style="height:350px"><canvas id="facChart"></canvas></div>
         </div>
 
         <script>
-            // Subject Wise Graph
             const subData = ${JSON.stringify(data.subjectPercents)};
-            new Chart(document.getElementById('subjChart'), {
+            new Chart(document.getElementById('facChart'), {
                 type: 'bar',
                 data: { 
-                    labels: Object.keys(subData).length ? Object.keys(subData) : ['N/A'], 
-                    datasets: [{ label: 'Attendance %', data: Object.values(subData).length ? Object.values(subData) : [0], backgroundColor: '#10b981', borderRadius: 6 }] 
-                },
-                options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } }
-            });
-
-            // Weekly Trend Graph
-            new Chart(document.getElementById('trendChart'), {
-                type: 'line',
-                data: { 
-                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], 
-                    datasets: [{ label: 'Class Avg %', data: [0, 0, 0, 0, 0, ${data.percent}], borderColor: '#4f46e5', tension: 0.4, fill: true, backgroundColor: 'rgba(79, 70, 229, 0.05)' }] 
+                    labels: Object.keys(subData).length ? Object.keys(subData) : ['Awaiting Scans'], 
+                    datasets: [{ label: 'Attendance %', data: Object.values(subData).length ? Object.values(subData) : [0], backgroundColor: '#10b981', borderRadius: 12 }] 
                 },
                 options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } }
             });
         </script>
     `;
-    res.send(layout("Faculty Portal", content, dept));
+    res.send(layout("Faculty Hub", content, dept));
 });
 
-/* ================= REPORTS & CSV EXPORT ================= */
+/* ================= REPORTS ================= */
 app.get("/reports", (req, res) => {
     const dept = req.query.dept || "General";
     const data = getAnalytics({});
-    
-    const content = `
-        <div class="widget-box">
-            <div class="widget-header"><h3>Generate Professional Attendance Sheet 📁</h3></div>
-            <p style="color:#6b7280; font-size:0.9rem">Generate an Excel-ready CSV report for the selected department session.</p>
-            
-            <div style="display:flex; gap:15px; align-items:center; margin-top:20px">
-                <select id="repType"><option value="daily">Daily Report</option><option value="overall">Overall Record</option></select>
-                <button class="btn-indigo" onclick="exportData()"><i class="fas fa-file-excel"></i> Download Excel (.csv)</button>
-            </div>
+    res.send(layout("System Export", `
+        <div class="widget" style="text-align:center; padding:60px">
+            <i class="fas fa-file-excel fa-4x" style="color:var(--success); margin-bottom:20px"></i>
+            <h2>Generate Official Attendance Sheet</h2>
+            <p style="color:#94a3b8; max-width:500px; margin:10px auto 30px">Convert real-time RFID logs into a professional Excel-compatible CSV file for record keeping.</p>
+            <button onclick="exportCSV()" style="padding:15px 40px; background:var(--success); color:white; border:none; border-radius:15px; font-weight:800; cursor:pointer">
+                <i class="fas fa-download"></i> DOWNLOAD EXCEL (.CSV)
+            </button>
         </div>
-
-        <div class="widget-box">
-            <div class="widget-header"><h3>Live Scan Log (Ready for Scanning)</h3></div>
-            <table style="width:100%; border-collapse:collapse; font-size:0.85rem">
-                <thead>
-                    <tr style="text-align:left; color:#9ca3af; border-bottom:1px solid #f3f4f6">
-                        <th style="padding:15px">Student Name</th><th style="padding:15px">Class</th><th style="padding:15px">Subject</th><th style="padding:15px">Date</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.records.length > 0 ? data.records.map(r => `
-                        <tr style="border-bottom:1px solid #f9fafb">
-                            <td style="padding:15px; font-weight:600">${r.name}</td><td>${r.className}</td><td>${r.subject}</td><td>${r.date}</td>
-                        </tr>
-                    `).join("") : '<tr><td colspan="4" style="padding:40px; text-align:center; color:#9ca3af">System in Zero-State. Please scan RFID tags to populate data.</td></tr>'}
-                </tbody>
-            </table>
-        </div>
-
         <script>
-            function exportData() {
+            function exportCSV() {
                 const data = ${JSON.stringify(data.records)};
-                if(data.length === 0) return alert("System state is currently Zero. No scans found to export.");
-
-                let csv = "Name,Class,Batch,Subject,Date\\n";
-                data.forEach(r => { csv += \`\${r.name},\${r.className},\${r.batch},\${r.subject},\${r.date}\\n\`; });
-
+                if(data.length === 0) return alert("System state is empty. No data to export.");
+                let csv = "Name,Class,Subject,Date\\n";
+                data.forEach(r => { csv += \`\${r.name},\${r.className},\${r.subject},\${r.date}\\n\`; });
                 const blob = new Blob([csv], { type: 'text/csv' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = 'Attendance_Log_' + new Date().toISOString().split('T')[0] + '.csv';
+                a.href = url; a.download = 'NEXUS_Report_' + new Date().toLocaleDateString() + '.csv';
                 document.body.appendChild(a); a.click();
-                window.URL.revokeObjectURL(url);
             }
         </script>
-    `;
-    res.send(layout("Report Center", content, dept));
+    `, dept));
 });
 
 /* ================= LOGIN ================= */
 app.get("/login", (req, res) => {
     res.send(`
-        <body style="background:#f3f4f6; display:flex; align-items:center; justify-content:center; height:100vh; font-family:sans-serif">
-            <div style="background:white; padding:50px; border-radius:24px; box-shadow:0 20px 40px rgba(0,0,0,0.05); text-align:center; width:360px; border:1px solid #e5e7eb">
-                <div style="color:var(--primary); font-size:4rem; margin-bottom:25px"><i class="fas fa-user-check"></i></div>
-                <h1 style="margin:0; font-size:1.8rem; letter-spacing:-1px">RFID Access</h1>
-                <p style="color:#6b7280; margin:10px 0 40px 0; font-weight:500">College Administration Portal</p>
-                <button onclick="location.href='/principal'" style="width:100%; padding:15px; background:var(--primary); color:white; border:none; border-radius:12px; cursor:pointer; font-weight:700; font-size:1rem; transition:0.3s">Launch Dashboard</button>
+        <body style="background:#f8fafc; display:flex; align-items:center; justify-content:center; height:100vh; font-family:'Plus Jakarta Sans',sans-serif">
+            <div style="background:white; padding:60px; border-radius:35px; box-shadow:0 30px 60px -12px rgba(0,0,0,0.08); text-align:center; width:420px; border:1px solid #f1f5f9">
+                <div style="color:var(--primary); font-size:4rem; margin-bottom:20px"><i class="fas fa-compass"></i></div>
+                <h1 style="margin:0; font-size:2.2rem; font-weight:800; color:#1e293b; letter-spacing:-1px">Nexus Gateway</h1>
+                <p style="color:#94a3b8; font-weight:600; margin:10px 0 40px 0">Authorized Academic Access Only</p>
+                <button onclick="location.href='/principal'" style="width:100%; padding:18px; background:#6366f1; color:white; border:none; border-radius:18px; cursor:pointer; font-weight:800; font-size:1.1rem; box-shadow: 0 10px 20px -5px rgba(99,102,241,0.4)">Access Dashboards</button>
+                <div style="margin-top:50px; font-size:0.65rem; color:#cbd5e1; font-weight:800; letter-spacing:2px">RFID SYSTEM V2.6</div>
             </div>
         </body>
     `);
 });
 
 app.get("/", (req, res) => res.redirect("/login"));
-app.listen(PORT, () => console.log("🚀 Server running on http://localhost:" + PORT));
+app.listen(PORT, () => console.log("🚀 Nexus Portal Live: http://localhost:" + PORT));
