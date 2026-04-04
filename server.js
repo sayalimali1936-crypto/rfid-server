@@ -309,3 +309,7 @@ app.get("/login", (req, res) => {
 
 app.get("/", (req, res) => res.redirect("/login"));
 app.listen(PORT, () => console.log("🚀 Server: http://localhost:" + PORT));
+
+
+
+
