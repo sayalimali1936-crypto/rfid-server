@@ -332,71 +332,72 @@ app.get("/dashboard", (req, res) => {
     
     body { background-color: var(--bg-dark); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
 
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-dark); }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
     /* Sidebar */
-    .sidebar { width: 260px; background-color: var(--bg-card); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 30px 0; transition: var(--transition); z-index: 10; }
-    .logo-container { padding: 0 24px 30px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; display: flex; align-items: center; gap: 12px; font-size: 1.25rem; font-weight: 700; color: white; }
-    .logo-icon { width: 32px; height: 32px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .sidebar { width: 260px; background-color: var(--bg-card); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 24px 0; transition: var(--transition); z-index: 10; }
+    .logo-container { padding: 0 24px 24px; border-bottom: 1px solid var(--border-color); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; font-size: 1.25rem; font-weight: 700; color: white; }
+    .logo-icon { width: 32px; height: 32px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
     
-    .nav-item { padding: 14px 24px; margin: 4px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-weight: 500; transition: var(--transition); position: relative; overflow: hidden; }
-    .nav-item:hover { background-color: var(--bg-hover); color: white; }
+    .nav-item { padding: 12px 24px; margin: 4px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-weight: 500; transition: var(--transition); position: relative; }
+    .nav-item:hover { background-color: var(--bg-hover); color: white; transform: translateX(8px); }
     .nav-item.active { background-color: rgba(59, 130, 246, 0.1); color: var(--primary); }
-    .nav-item.active::before { content: ""; position: absolute; left: 0; top: 0; height: 100%; width: 4px; background: var(--primary); border-radius: 0 4px 4px 0; }
+    .nav-item.active::before { content: ""; position: absolute; left: -16px; top: 0; height: 100%; width: 4px; background: var(--primary); border-radius: 0 4px 4px 0; }
     
     .sidebar-footer { margin-top: auto; padding: 24px; border-top: 1px solid var(--border-color); }
-    .custom-select { width: 100%; background: var(--bg-dark); color: var(--text-main); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; outline: none; transition: var(--transition); appearance: none; cursor: pointer; }
-    .custom-select:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
-
+    .custom-select, .search-input { width: 100%; background: var(--bg-dark); color: var(--text-main); border: 1px solid var(--border-color); padding: 10px 14px; border-radius: 8px; outline: none; transition: var(--transition); font-size: 0.9rem; }
+    .custom-select:focus, .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+    
     /* Main Content */
     .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; background-color: var(--bg-dark); }
-    
-    .topbar { height: 80px; background-color: rgba(30, 41, 59, 0.8); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 40px; justify-content: space-between; position: sticky; top: 0; z-index: 5; }
-    .page-title { font-size: 1.5rem; font-weight: 600; color: white; }
-    
-    .container { padding: 40px; }
+    .topbar { height: 72px; background-color: rgba(30, 41, 59, 0.9); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 32px; justify-content: space-between; position: sticky; top: 0; z-index: 5; }
+    .page-title { font-size: 1.25rem; font-weight: 600; color: white; display: flex; align-items: center; gap: 8px; }
+    .container { padding: 32px; }
 
     /* Views */
-    .view-section { display: none; animation: fadeIn 0.4s ease-in-out; }
+    .view-section { display: none; animation: fadeIn 0.4s ease; }
     .view-section.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
     /* Cards */
-    .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; margin-bottom: 32px; }
-    
-    .stat-card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); transition: var(--transition); position: relative; overflow: hidden; }
-    .stat-card:hover { transform: translateY(-4px); box-shadow: 0 12px 20px -8px rgba(0, 0, 0, 0.4); border-color: var(--bg-hover); }
-    .stat-card::after { content: ""; position: absolute; top:0; right:0; width: 100px; height: 100px; background: radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 70%); border-radius: 50%; transform: translate(30%, -30%); }
-    
-    .stat-title { color: var(--text-muted); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 12px; }
-    .stat-value { font-size: 2.25rem; font-weight: 700; color: white; display: flex; align-items: baseline; gap: 8px; }
+    .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 24px; }
+    .stat-card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease; display: flex; flex-direction: column; gap: 8px; }
+    .stat-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); border-color: var(--primary); }
+    .stat-title { color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; display:flex; align-items:center; gap:6px;}
+    .stat-value { font-size: 2rem; font-weight: 700; color: white; display: flex; align-items: baseline; gap: 8px; }
 
     /* Chart Box */
-    .chart-box { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); height: 420px; width: 100%; position: relative; }
+    .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; margin-bottom: 24px; }
+    .chart-box { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); width: 100%; position:relative; }
+    .chart-title { color: white; font-weight: 600; font-size: 1rem; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;}
+    .chart-container { position: relative; height: 280px; width: 100%; }
 
-    /* Table */
-    .table-container { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); }
-    .table-header-controls { padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.1); }
-    .search-input { background: var(--bg-dark) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%2394a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 12px center; padding: 12px 16px 12px 40px; border: 1px solid var(--border-color); border-radius: 8px; color: white; width: 320px; outline: none; transition: var(--transition); }
-    .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+    /* Filters Bar */
+    .filters-bar { display: flex; gap: 16px; margin-bottom: 24px; background: var(--bg-card); padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
     
-    table { width: 100%; border-collapse: collapse; }
-    th { background: rgba(0,0,0,0.15); color: var(--text-muted); font-weight: 600; text-align: left; padding: 16px 24px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); }
-    td { padding: 16px 24px; border-bottom: 1px solid var(--border-color); color: var(--text-main); font-size: 0.9rem; }
+    /* Table */
+    .table-container { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-bottom: 24px;}
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { background: rgba(15, 23, 42, 0.5); color: var(--text-muted); font-weight: 600; padding: 14px 24px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); }
+    td { padding: 14px 24px; border-bottom: 1px solid var(--border-color); color: var(--text-main); font-size: 0.9rem; }
     tbody tr { transition: var(--transition); }
-    tbody tr:hover { background-color: rgba(255,255,255,0.03); }
-    td:first-child { font-weight: 500; color: white; }
+    tbody tr:hover { background-color: rgba(59, 130, 246, 0.05); }
 
-    .badge { padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: inline-block; }
+    .badge { padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
     .badge-success { background: rgba(34, 197, 94, 0.15); color: var(--success); border: 1px solid rgba(34, 197, 94, 0.2); }
     .badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
 
-    .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: var(--transition); }
-    .btn:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    /* Dept Cards */
+    .dept-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+    .dept-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 32px 24px; text-align: center; cursor: pointer; transition: transform 0.3s ease, border-color 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .dept-card:hover { transform: translateY(-6px); border-color: var(--primary); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+    .dept-icon { font-size: 2.5rem; }
+    .dept-title { font-size: 1.1rem; font-weight: 600; color: white; }
 
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: var(--bg-dark); }
-    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -404,118 +405,165 @@ app.get("/dashboard", (req, res) => {
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="logo-container">
-      <div class="logo-icon">📶</div>
-      <div>Smart RFID</div>
+       <div class="logo-icon">📊</div>
+       <div>Admin Panel</div>
     </div>
     
     <div class="nav-item active" onclick="switchTab('dashboard')">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
-      Dashboard
+       <span style="font-size:1.1rem;">📊</span> Dashboard
     </div>
     <div class="nav-item" onclick="switchTab('faculty')">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-      Faculty
+       <span style="font-size:1.1rem;">👨‍🏫</span> Faculty
     </div>
     <div class="nav-item" onclick="switchTab('hod')">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-      HOD
+       <span style="font-size:1.1rem;">🏫</span> HOD
     </div>
     <div class="nav-item" onclick="switchTab('principal')">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-      Principal
+       <span style="font-size:1.1rem;">🏛</span> Principal
     </div>
     
     <div class="sidebar-footer">
-      <label style="color:var(--text-muted); font-size:12px; text-transform:uppercase; font-weight:600; margin-bottom:8px; display:block;">Global Class</label>
-      <select id="global-class" class="custom-select" onchange="renderCurrentView()">
-        <option value="">All Classes</option>
-        <option value="FE">First Year (FE)</option>
-        <option value="SE">Second Year (SE)</option>
-        <option value="TE">Third Year (TE)</option>
-        <option value="BE">Final Year (BE)</option>
-      </select>
+       <label style="color:var(--text-muted); font-size:11px; text-transform:uppercase; font-weight:600; margin-bottom:8px; display:block;">Context Scope (Class)</label>
+       <select id="global-class" class="custom-select" onchange="renderCurrentView()">
+          <option value="">All Classes</option>
+          <option value="FE">FE (First Year)</option>
+          <option value="SE">SE (Second Year)</option>
+          <option value="TE">TE (Third Year)</option>
+          <option value="BE">BE (Final Year)</option>
+       </select>
     </div>
   </aside>
   
   <main class="main-content">
     <header class="topbar">
        <div id="page-title" class="page-title">Dashboard Overview</div>
-       <div>
-         <button class="btn" onclick="init()">Refresh Data</button>
+       <div style="font-size:0.85rem; color:var(--text-muted); display:flex; align-items:center; gap:8px;">
+          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--success);"></span> Live Auto-Sync
        </div>
     </header>
     
     <div class="container">
       
-      <!-- DASHBOARD VIEW -->
+      <!-- 1. DASHBOARD VIEW -->
       <section id="view-dashboard" class="view-section active">
         <div class="grid-cards">
           <div class="stat-card">
-            <div class="stat-title">Total Present Today</div>
-            <div class="stat-value" id="dash-present">...</div>
+            <div class="stat-title">🟢 Total Present Today</div>
+            <div class="stat-value" id="dash-present">0</div>
           </div>
           <div class="stat-card">
-            <div class="stat-title">Total Absent Today</div>
-            <div class="stat-value" id="dash-absent">...</div>
+            <div class="stat-title">🔴 Total Absent Today</div>
+            <div class="stat-value" id="dash-absent">0</div>
           </div>
           <div class="stat-card">
-            <div class="stat-title">Today's Attendance</div>
-            <div class="stat-value" id="dash-pct">...</div>
+            <div class="stat-title">📊 Today's % Attendance</div>
+            <div class="stat-value" id="dash-pct">0%</div>
           </div>
         </div>
-        <div class="chart-box">
-          <canvas id="mainChart"></canvas>
+        <div class="charts-grid">
+           <div class="chart-box">
+              <div class="chart-title">Subject vs Students Present (Today)</div>
+              <div class="chart-container"><canvas id="dashBarChart"></canvas></div>
+           </div>
+           <div class="chart-box">
+              <div class="chart-title">Weekly Attendance Trend</div>
+              <div class="chart-container"><canvas id="dashLineChart"></canvas></div>
+           </div>
         </div>
       </section>
       
-      <!-- FACULTY VIEW -->
+      <!-- 2. FACULTY VIEW -->
       <section id="view-faculty" class="view-section">
+        <div class="filters-bar">
+          <input type="text" id="fac-search" class="search-input" style="flex:2;" placeholder="🔍 Search student name..." onkeyup="renderFacultyView()">
+          <select id="fac-subject" class="custom-select" style="flex:1;" onchange="renderFacultyView()">
+            <option value="">📘 All Subjects</option>
+          </select>
+        </div>
         <div class="grid-cards">
-          <div class="stat-card"><div class="stat-title">Total Lectures Conducted</div><div class="stat-value" id="fac-lectures">0</div></div>
-          <div class="stat-card"><div class="stat-title">Average Attendance</div><div class="stat-value" id="fac-pct">0%</div></div>
+          <div class="stat-card">
+             <div class="stat-title">Total Lectures Conducted</div>
+             <div class="stat-value" id="fac-lec-total">0</div>
+          </div>
+          <div class="stat-card">
+             <div class="stat-title">Student Attended Lectures</div>
+             <div class="stat-value" id="fac-lec-attended">0</div>
+          </div>
+          <div class="stat-card">
+             <div class="stat-title">% Attendance</div>
+             <div class="stat-value" id="fac-att-pct">0%</div>
+          </div>
         </div>
         <div class="table-container">
-          <div class="table-header-controls">
-            <input type="text" id="fac-search" class="search-input" placeholder="Search student by name..." onkeyup="renderFacultyTable()">
-          </div>
           <table>
-            <thead><tr><th>Student Name</th><th>Subject</th><th>Attendance Progress</th><th>Status</th></tr></thead>
+            <thead><tr><th>Name</th><th>Subject</th><th>Attendance %</th><th>Status</th></tr></thead>
             <tbody id="fac-tbody"></tbody>
           </table>
         </div>
+        <div class="chart-box" style="margin-top: 24px;">
+           <div class="chart-title" id="fac-chart-title">Subject-wise Attendance</div>
+           <div class="chart-container" style="height: 300px;"><canvas id="facChart"></canvas></div>
+        </div>
       </section>
       
-      <!-- HOD VIEW -->
+      <!-- 3. HOD VIEW -->
       <section id="view-hod" class="view-section">
-        <div style="display:flex; gap:24px; margin-bottom:32px;">
-          <select id="hod-class" class="custom-select" style="width:240px" onchange="updateHodSubjects(); renderHodView();">
-            <option value="">All Classes (HOD)</option>
-            <option value="FE">First Year (FE)</option>
-            <option value="SE">Second Year (SE)</option>
-            <option value="TE">Third Year (TE)</option>
-            <option value="BE">Final Year (BE)</option>
+        <div class="filters-bar">
+          <select id="hod-class" class="custom-select" style="flex:1;" onchange="updateHodSubjects(); renderHodView();">
+            <option value="">🏫 All Classes</option>
+            <option value="FE">FE</option><option value="SE">SE</option><option value="TE">TE</option><option value="BE">BE</option>
           </select>
-          <select id="hod-subject" class="custom-select" style="width:240px" onchange="renderHodView()">
-            <option value="">All Subjects</option>
+          <select id="hod-subject" class="custom-select" style="flex:1;" onchange="renderHodView()">
+            <option value="">📘 All Subjects</option>
           </select>
         </div>
         <div class="grid-cards">
-          <div class="stat-card"><div class="stat-title">Total Students</div><div class="stat-value" id="hod-total">0</div></div>
-          <div class="stat-card"><div class="stat-title">Present Today</div><div class="stat-value" id="hod-present">0</div></div>
-          <div class="stat-card"><div class="stat-title">Overall Class %</div><div class="stat-value" id="hod-pct">0%</div></div>
+          <div class="stat-card">
+             <div class="stat-title">Total Present Today</div>
+             <div class="stat-value" id="hod-present">0</div>
+          </div>
+          <div class="stat-card">
+             <div class="stat-title">Total Students</div>
+             <div class="stat-value" id="hod-total">0</div>
+          </div>
+          <div class="stat-card">
+             <div class="stat-title">% Attendance</div>
+             <div class="stat-value" id="hod-pct">0%</div>
+          </div>
         </div>
         <div class="table-container">
           <table>
-            <thead><tr><th>Subject</th><th>Lectures Conducted</th><th>Avg Students Present</th></tr></thead>
+            <thead><tr><th>Subject</th><th>Students Present (Today)</th><th>Avg Attendance %</th></tr></thead>
             <tbody id="hod-tbody"></tbody>
           </table>
         </div>
+        <div class="chart-box" style="margin-top: 24px;">
+           <div class="chart-title">Subject-wise Attendance Comparison</div>
+           <div class="chart-container" style="height: 300px;"><canvas id="hodChart"></canvas></div>
+        </div>
       </section>
       
-      <!-- PRINCIPAL VIEW -->
+      <!-- 4. PRINCIPAL VIEW -->
       <section id="view-principal" class="view-section">
-        <div class="grid-cards" id="dept-cards">
-          <!-- Rendered in JS -->
+        <div class="dept-grid">
+           <div class="dept-card" onclick="openHodForDept('Computer')">
+              <div class="dept-icon">💻</div><div class="dept-title">Computer</div>
+           </div>
+           <div class="dept-card" onclick="openHodForDept('Electrical')">
+              <div class="dept-icon">⚡</div><div class="dept-title">Electrical</div>
+           </div>
+           <div class="dept-card" onclick="openHodForDept('Civil')">
+              <div class="dept-icon">🏗</div><div class="dept-title">Civil</div>
+           </div>
+           <div class="dept-card" onclick="openHodForDept('Mechanical')">
+              <div class="dept-icon">⚙</div><div class="dept-title">Mechanical</div>
+           </div>
+           <div class="dept-card" onclick="openHodForDept('ENTC')">
+              <div class="dept-icon">📡</div><div class="dept-title">ENTC</div>
+           </div>
+           <div class="dept-card" onclick="openHodForDept('FE')">
+              <div class="dept-icon">🎓</div><div class="dept-title">First Year</div>
+           </div>
         </div>
       </section>
 
@@ -526,14 +574,20 @@ app.get("/dashboard", (req, res) => {
     let rawRecords = [];
     let validRecords = []; 
     let subjectLectures = {}; 
-    let totalStudents = 0;
-    let studentSubjectCount = {}; 
-    let dashboardChart;
+    let studentInfo = {}; // name -> { className }
+    let datesList = [];
+    
+    // Chart instances
+    let dashBar = null;
+    let dashLine = null;
+    let facChartCtx = null;
+    let hodChartCtx = null;
 
     async function init() {
       try {
         const res = await fetch("/api/dashboard");
         const data = await res.json();
+        // Prevent unnecessary full UI re-renders if length is strictly same (optional optimization)
         rawRecords = data.records || [];
         processData();
         renderCurrentView();
@@ -544,226 +598,331 @@ app.get("/dashboard", (req, res) => {
 
     function processData() {
       const uniqueStudentAtt = new Map();
-      const studentClasses = {}; 
+      studentInfo = {};
 
+      // 1. Deduplication: Count a student ONLY ONCE per subject per day
       rawRecords.forEach(r => {
         if (r.role === 'STUDENT') {
-          const key = \`\${r.date}-\${r.subject}-\${r.name}\`;
+          const sName = r.name.trim();
+          const sClass = r.className.trim() || 'Unknown';
+          const sSub = r.subject.trim();
+          const sDate = r.date.trim();
+          
+          const key = \`\${sDate}-\${sSub}-\${sName}\`;
+          
           if (!uniqueStudentAtt.has(key)) {
-            uniqueStudentAtt.set(key, r);
+            uniqueStudentAtt.set(key, { name: sName, className: sClass, subject: sSub, date: sDate });
           }
-          studentClasses[r.name] = r.className;
+          studentInfo[sName] = { className: sClass };
         }
       });
+      
       validRecords = Array.from(uniqueStudentAtt.values());
-      totalStudents = Object.keys(studentClasses).length || 1;
+      datesList = [...new Set(validRecords.map(r => r.date))].sort();
 
+      // 2. Compute Max Lectures per subject
       const subjectDateMap = {}; 
       validRecords.forEach(r => {
         if (!subjectDateMap[r.subject]) subjectDateMap[r.subject] = new Set();
         subjectDateMap[r.subject].add(r.date);
       });
+      
+      subjectLectures = {};
       for (const sub in subjectDateMap) {
         subjectLectures[sub] = subjectDateMap[sub].size || 1;
       }
 
-      studentSubjectCount = {};
-      validRecords.forEach(r => {
-        if (!studentSubjectCount[r.name]) studentSubjectCount[r.name] = {};
-        studentSubjectCount[r.name][r.subject] = (studentSubjectCount[r.name][r.subject] || 0) + 1;
-        studentSubjectCount[r.name]._class = r.className;
-      });
+      // Populate global dropdowns once
+      populateSubjectDropdown('fac-subject');
+      populateSubjectDropdown('hod-subject');
+    }
+
+    function populateSubjectDropdown(id) {
+       const select = document.getElementById(id);
+       const currentValue = select.value;
+       select.innerHTML = '<option value="">📘 All Subjects</option>';
+       Object.keys(subjectLectures).sort().forEach(sub => {
+          select.innerHTML += \`<option value="\${sub}">\${sub}</option>\`;
+       });
+       if(Object.keys(subjectLectures).includes(currentValue)) select.value = currentValue;
     }
 
     function getFilteredRecords() {
       const gClass = document.getElementById("global-class").value;
-      return validRecords.filter(r => !gClass || r.className === gClass);
+      if (!gClass) return validRecords;
+      return validRecords.filter(r => r.className === gClass);
     }
 
+    function getStudentsInScope(scopeRecords) {
+       const students = new Set();
+       const gClass = document.getElementById("global-class").value;
+       Object.keys(studentInfo).forEach(s => {
+          if (!gClass || studentInfo[s].className === gClass) {
+             students.add(s);
+          }
+       });
+       return Array.from(students);
+    }
+
+    /* --- DASHBOARD VIEW --- */
     function renderDashboard() {
       const records = getFilteredRecords();
-      const dates = [...new Set(records.map(r => r.date))].sort();
-      const latestDate = dates.length ? dates[dates.length - 1] : null;
+      const allStudents = getStudentsInScope(records);
+      const totalStuds = allStudents.length || 1;
+      const latestDate = datesList.length ? datesList[datesList.length - 1] : null;
 
-      let presentToday = 0;
-      let totalStuds = new Set(records.map(r=>r.name)).size || (getFilteredRecords().length ? 1 : 0);
-
-      if (latestDate) {
-        const todayRecs = records.filter(r => r.date === latestDate);
-        presentToday = new Set(todayRecs.map(r => r.name)).size;
-      }
-
-      const absentToday = totalStuds > presentToday ? totalStuds - presentToday : 0;
-      let pct = totalStuds > 0 ? ((presentToday / totalStuds) * 100).toFixed(1) : 0;
-
-      document.getElementById("dash-present").innerText = presentToday;
-      document.getElementById("dash-absent").innerText = absentToday;
-      document.getElementById("dash-pct").innerText = pct + "%";
-
-      const subPresences = {};
-      records.forEach(r => {
-        subPresences[r.subject] = (subPresences[r.subject] || 0) + 1;
-      });
-
-      const ctx = document.getElementById("mainChart").getContext("2d");
-      if (dashboardChart) dashboardChart.destroy();
+      let presentTodayCount = 0;
+      let subPresencesToday = {};
+      let weeklyTrend = {};
       
-      Chart.defaults.color = '#94a3b8';
-      Chart.defaults.borderColor = '#334155';
-      Chart.defaults.font.family = 'Inter';
+      // Initialize weekly trend
+      datesList.slice(-7).forEach(d => weeklyTrend[d] = new Set());
 
-      dashboardChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: Object.keys(subPresences),
-          datasets: [{
-            label: 'Total Subject Presences',
-            data: Object.values(subPresences),
-            backgroundColor: '#3b82f6',
-            hoverBackgroundColor: '#60a5fa',
-            borderRadius: 6,
-            barThickness: 40
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            y: { beginAtZero: true, grid: { color: '#1e293b' } },
-            x: { grid: { display: false } }
-          }
-        }
+      records.forEach(r => {
+         if (r.date === latestDate) {
+            subPresencesToday[r.subject] = (subPresencesToday[r.subject] || 0) + 1;
+         }
+         if (weeklyTrend[r.date] !== undefined) {
+            weeklyTrend[r.date].add(r.name);
+         }
       });
+      
+      if (latestDate) {
+         presentTodayCount = weeklyTrend[latestDate] ? weeklyTrend[latestDate].size : 0;
+      }
+      const absentToday = totalStuds > presentTodayCount ? (totalStuds - presentTodayCount) : 0;
+      let pct = totalStuds > 0 ? ((presentTodayCount / totalStuds) * 100) : 0;
+
+      document.getElementById("dash-present").innerText = presentTodayCount;
+      document.getElementById("dash-absent").innerText = absentToday;
+      document.getElementById("dash-pct").innerText = pct.toFixed(1) + "%";
+
+      // Dash Bar Chart: Subject vs Students Present (Today)
+      dashBar = buildChart('dashBarChart', dashBar, 'bar', Object.keys(subPresencesToday), Object.values(subPresencesToday), 'Students Present Today', '#3b82f6');
+      
+      // Dash Line Chart: Weekly Attendance Trend (% of total students over the last 7 days)
+      const lineLabels = Object.keys(weeklyTrend);
+      const lineData = lineLabels.map(d => {
+         return totalStuds > 0 ? ((weeklyTrend[d].size / totalStuds) * 100).toFixed(1) : 0;
+      });
+      dashLine = buildChart('dashLineChart', dashLine, 'line', lineLabels, lineData, 'Daily Overall Attendance %', '#10b981');
     }
 
-    function renderFacultyTable() {
+    /* --- FACULTY VIEW --- */
+    function renderFacultyView() {
       const gClass = document.getElementById("global-class").value;
       const search = document.getElementById("fac-search").value.toLowerCase();
-      const tbody = document.getElementById("fac-tbody");
-      tbody.innerHTML = "";
-
-      let totalLec = 0;
-      let attendedLecSum = 0;
-      let pairCount = 0;
-      let lecSet = new Set();
+      const selSub = document.getElementById("fac-subject").value;
       
+      let students = Object.keys(studentInfo).filter(s => {
+         if (gClass && studentInfo[s].className !== gClass) return false;
+         if (search && !s.toLowerCase().includes(search)) return false;
+         return true;
+      });
+
+      const scopeSubjects = selSub ? [selSub] : Object.keys(subjectLectures);
+      let totalLecs = 0;
+      let totalAttended = 0;
+
+      const tbody = document.getElementById("fac-tbody");
       let rows = "";
       
-      for (const student in studentSubjectCount) {
-        const dataInfo = studentSubjectCount[student];
-        if (gClass && dataInfo._class !== gClass) continue;
-        if (search && !student.toLowerCase().includes(search)) continue;
+      // Calculate attendance per student, per subject
+      let chartDataMap = {}; // subject -> attended %
+      
+      students.forEach(student => {
+         let stuTotalLec = 0;
+         let stuAttended = 0;
+         
+         scopeSubjects.forEach(sub => {
+            const maxLec = subjectLectures[sub] || 1;
+            const attendedCount = validRecords.filter(r => r.name === student && r.subject === sub).length;
+            // % MUST NEVER exceed 100
+            const finalAttended = Math.min(attendedCount, maxLec);
+            
+            totalLecs += maxLec;
+            totalAttended += finalAttended;
+            
+            stuTotalLec += maxLec;
+            stuAttended += finalAttended;
+            
+            // For chart aggregation if specific student is selected
+            if (students.length === 1) {
+               chartDataMap[sub] = (finalAttended / maxLec) * 100;
+            }
+         });
+         
+         const stuPct = stuTotalLec > 0 ? ((stuAttended / stuTotalLec) * 100) : 0;
+         const isDefaulter = stuPct < 75;
+         
+         rows += \`<tr>
+            <td style="font-weight:600;">\${student}</td>
+            <td>\${selSub ? selSub : 'All Assigned'}</td>
+            <td><div style="font-weight:600; color:\${isDefaulter ? 'var(--danger)' : 'var(--text-main)'}">\${stuPct.toFixed(1)}%</div></td>
+            <td><span class="badge \${isDefaulter ? 'badge-danger' : 'badge-success'}">\${isDefaulter ? 'Defaulter' : 'OK'}</span></td>
+         </tr>\`;
+      });
+      
+      tbody.innerHTML = rows || '<tr><td colspan="4" style="text-align:center;">No students matched criteria.</td></tr>';
 
-        for (const subject in dataInfo) {
-          if (subject === '_class') continue;
-          const att = dataInfo[subject];
-          const maxLec = subjectLectures[subject] || 1;
-          let pct = (att / maxLec) * 100;
-          if (pct > 100) pct = 100;
+      const ovPct = totalLecs > 0 ? ((totalAttended / totalLecs) * 100) : 0;
+      document.getElementById("fac-lec-total").innerText = totalLecs;
+      document.getElementById("fac-lec-attended").innerText = totalAttended;
+      document.getElementById("fac-att-pct").innerText = ovPct.toFixed(1) + "%";
 
-          lecSet.add(subject);
-          totalLec += maxLec;
-          attendedLecSum += att;
-          pairCount++;
-
-          rows += \`
-            <tr>
-              <td>\${student}</td>
-              <td>\${subject}</td>
-              <td>
-                <div style="display:flex; align-items:center; gap:12px;">
-                  <div style="flex:1; background:rgba(0,0,0,0.2); height:8px; border-radius:4px; overflow:hidden;">
-                    <div style="width:\${pct}%; background:\${pct>=75 ? '#22c55e' : '#ef4444'}; height:100%; border-radius:4px; transition:width 1s ease-out;"></div>
-                  </div>
-                  <span style="width:45px; text-align:right; font-weight:600; color:\${pct>=75 ? '#22c55e' : '#ef4444'};">\${pct.toFixed(0)}%</span>
-                </div>
-              </td>
-              <td><span class="badge \${pct>=75 ? 'badge-success' : 'badge-danger'}">\${pct>=75 ? 'Optimal' : 'Defaulter'}</span></td>
-            </tr>
-          \`;
-        }
+      // Render chart
+      let cLabels = []; let cData = [];
+      if (students.length === 1) {
+         document.getElementById("fac-chart-title").innerText = \`Subject-wise Attendance for \${students[0]}\`;
+         cLabels = Object.keys(chartDataMap);
+         cData = Object.values(chartDataMap);
+      } else {
+         document.getElementById("fac-chart-title").innerText = \`Subject-wise Attendance (Average %)\`;
+         // compute average attendance per subject across all scoped students
+         scopeSubjects.forEach(sub => {
+            const maxLec = subjectLectures[sub] || 1;
+            let subTotalAtt = 0;
+            students.forEach(student => {
+               const attendedCount = validRecords.filter(r => r.name === student && r.subject === sub).length;
+               subTotalAtt += Math.min(attendedCount, maxLec);
+            });
+            const subTotalPoss = maxLec * students.length;
+            cLabels.push(sub);
+            cData.push(subTotalPoss > 0 ? (subTotalAtt / subTotalPoss) * 100 : 0);
+         });
       }
-
-      tbody.innerHTML = rows;
-
-      let uniqueSubLecs = Array.from(lecSet).reduce((sum, sub) => sum + (subjectLectures[sub]||1), 0);
-      document.getElementById("fac-lectures").innerText = uniqueSubLecs;
-      let avgPct = pairCount === 0 ? 0 : (attendedLecSum / totalLec) * 100;
-      document.getElementById("fac-pct").innerText = avgPct.toFixed(1) + "%";
+      
+      facChartCtx = buildChart('facChart', facChartCtx, 'bar', cLabels, cData, 'Attendance %', '#8b5cf6');
     }
 
+    /* --- HOD VIEW --- */
     function updateHodSubjects() {
       const hClass = document.getElementById("hod-class").value;
       const hSub = document.getElementById("hod-subject");
-      hSub.innerHTML = '<option value="">All Subjects</option>';
-      
+      hSub.innerHTML = '<option value="">📘 All Subjects</option>';
       const subjectsForClass = new Set();
       validRecords.forEach(r => {
         if (!hClass || r.className === hClass) subjectsForClass.add(r.subject);
       });
-      
       subjectsForClass.forEach(s => {
         hSub.innerHTML += \`<option value="\${s}">\${s}</option>\`;
       });
     }
 
     function renderHodView() {
+      const gClass = document.getElementById("global-class").value; 
       const hClass = document.getElementById("hod-class").value;
       const hSub = document.getElementById("hod-subject").value;
       
-      let filtered = validRecords;
-      if (hClass) filtered = filtered.filter(r => r.className === hClass);
-      if (hSub) filtered = filtered.filter(r => r.subject === hSub);
+      // If global is set, it overrides or strictly intersects hClass. We will intersect them cleanly.
+      const finalClass = hClass || gClass; 
 
-      const dates = [...new Set(filtered.map(r=>r.date))].sort();
-      const latestDate = dates.length ? dates[dates.length - 1] : null;
-      const todayRecs = latestDate ? filtered.filter(r => r.date === latestDate) : [];
+      let records = validRecords;
+      if (finalClass) records = records.filter(r => r.className === finalClass);
+      if (hSub) records = records.filter(r => r.subject === hSub);
+
+      const latestDate = datesList.length ? datesList[datesList.length - 1] : null;
+
+      // Extract unique students in scope logically
+      let scopeStudents = Object.keys(studentInfo);
+      if (finalClass) scopeStudents = scopeStudents.filter(s => studentInfo[s].className === finalClass);
       
-      const totalStudsForHod = new Set(filtered.map(r=>r.name)).size || (filtered.length ? 1 : 0);
-      const presentToday = new Set(todayRecs.map(r=>r.name)).size;
+      const totalStuds = scopeStudents.length || 1;
       
-      document.getElementById("hod-total").innerText = totalStudsForHod;
+      let presentToday = 0;
+      if (latestDate) {
+         presentToday = new Set(records.filter(r => r.date === latestDate).map(r => r.name)).size;
+      }
+
+      // Compute % Overall
+      const scopeSubjects = hSub ? [hSub] : Object.keys(subjectLectures);
+      let ovAtt = 0; let ovPoss = 0;
+      let subjectAverages = {};
+
+      scopeSubjects.forEach(sub => {
+         const maxLec = subjectLectures[sub] || 1;
+         let subAtt = 0;
+         scopeStudents.forEach(stu => {
+            const attCount = validRecords.filter(r => r.name === stu && r.subject === sub).length;
+            subAtt += Math.min(attCount, maxLec);
+         });
+         const subPoss = maxLec * scopeStudents.length;
+         
+         ovAtt += subAtt; ovPoss += subPoss;
+         subjectAverages[sub] = { 
+            avgPct: subPoss > 0 ? (subAtt / subPoss) * 100 : 0,
+            presentToday: latestDate ? new Set(records.filter(r=>r.subject===sub && r.date===latestDate).map(n=>n.name)).size : 0
+         };
+      });
+
+      const pct = ovPoss > 0 ? (ovAtt / ovPoss) * 100 : 0;
+
+      document.getElementById("hod-total").innerText = scopeStudents.length;
       document.getElementById("hod-present").innerText = presentToday;
-      document.getElementById("hod-pct").innerText = totalStudsForHod > 0 ? ((presentToday/totalStudsForHod)*100).toFixed(1) + "%" : "0%";
+      document.getElementById("hod-pct").innerText = pct.toFixed(1) + "%";
 
       const tbody = document.getElementById("hod-tbody");
-      const subStats = {};
-      filtered.forEach(r => {
-        if (!subStats[r.subject]) subStats[r.subject] = new Set();
-        subStats[r.subject].add(r.name + r.date);
-      });
-      
       let rows = "";
-      for (const sub in subStats) {
-        const presences = subStats[sub].size;
-        const lecs = subjectLectures[sub] || 1;
-        const avgPresent = (presences / lecs).toFixed(1);
-        
-        rows += \`<tr>
-          <td>\${sub}</td>
-          <td>\${lecs}</td>
-          <td>\${avgPresent} <span style="color:var(--text-muted); font-size:12px; margin-left:8px;">Avg per lecture</span></td>
-        </tr>\`;
-      }
+      scopeSubjects.forEach(sub => {
+         rows += \`<tr>
+            <td>\${sub}</td>
+            <td>\${subjectAverages[sub].presentToday}</td>
+            <td>\${subjectAverages[sub].avgPct.toFixed(1)}%</td>
+         </tr>\`;
+      });
       tbody.innerHTML = rows;
+
+      // HOD Chart
+      const cLabels = Object.keys(subjectAverages);
+      const cData = cLabels.map(l => subjectAverages[l].avgPct);
+      hodChartCtx = buildChart('hodChart', hodChartCtx, 'bar', cLabels, cData, 'Subject Average %', '#06b6d4');
     }
 
-    function renderPrincipalView() {
-      const depts = ["Computer", "Electrical", "Civil", "Mechanical", "ENTC", "First Year"];
-      const container = document.getElementById("dept-cards");
-      container.innerHTML = "";
+    function openHodForDept(dept) {
+       // Mapping purely for UI flow as requested
+       if (dept === 'FE') {
+          document.getElementById('global-class').value = 'FE';
+       } else {
+          document.getElementById('global-class').value = '';
+       }
+       switchTab('hod');
+    }
+
+    /* --- CHART BUILDER --- */
+    function buildChart(canvasId, instance, type, labels, data, labelText, color) {
+      if (instance) instance.destroy();
+      const ctx = document.getElementById(canvasId).getContext("2d");
       
-      depts.forEach(d => {
-        container.innerHTML += \`
-          <div class="stat-card" style="cursor:pointer;" onclick="switchTab('hod')">
-            <div class="stat-title">Department</div>
-            <div class="stat-value" style="font-size:1.5rem; margin-bottom:15px;">\${d} Engg.</div>
-            <div style="color:var(--primary); font-size:14px; font-weight:600; display:flex; align-items:center; gap:5px;">
-              View Analytics <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 19 19"></polyline></svg>
-            </div>
-          </div>
-        \`;
+      Chart.defaults.color = '#94a3b8';
+      Chart.defaults.font.family = 'Inter';
+
+      return new Chart(ctx, {
+        type: type,
+        data: {
+          labels: labels,
+          datasets: [{
+            label: labelText,
+            data: data,
+            backgroundColor: type === 'bar' ? color : 'rgba(16, 185, 129, 0.1)',
+            borderColor: color,
+            borderWidth: type === 'line' ? 3 : 0,
+            borderRadius: type === 'bar' ? 4 : 0,
+            fill: type === 'line',
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { 
+             legend: { display: false },
+             tooltip: { backgroundColor: '#1e293b', titleColor: '#fff', bodyColor: '#fff', borderColor: '#334155', borderWidth: 1 }
+          },
+          scales: {
+            y: { beginAtZero: true, max: (labelText.includes('%') ? 100 : undefined), grid: { color: 'rgba(51, 65, 85, 0.4)' } },
+            x: { grid: { display: false } }
+          }
+        }
       });
     }
 
@@ -784,29 +943,35 @@ app.get("/dashboard", (req, res) => {
       const titles = {
         'dashboard': 'Dashboard Overview',
         'faculty': 'Faculty Portal',
-        'hod': 'HOD Overview',
-        'principal': 'Principal View'
+        'hod': 'HOD Admin View',
+        'principal': 'Principal Operations'
       };
-      document.getElementById("page-title").innerText = titles[viewName];
+      
+      let pTitle = titles[viewName];
+      document.getElementById("page-title").innerText = pTitle;
 
-      if (viewName === 'dashboard') renderDashboard();
-      if (viewName === 'faculty') renderFacultyTable();
-      if (viewName === 'hod') {
+      renderCurrentView(viewName);
+    }
+
+    function renderCurrentView(viewIdArg) {
+      let viewId = viewIdArg;
+      if (!viewId) {
+         const activeViewEl = document.querySelector('.view-section.active');
+         if (!activeViewEl) return;
+         viewId = activeViewEl.id.replace('view-', '');
+      }
+
+      if (viewId === 'dashboard') renderDashboard();
+      if (viewId === 'faculty') renderFacultyView();
+      if (viewId === 'hod') {
         updateHodSubjects();
         renderHodView();
       }
-      if (viewName === 'principal') renderPrincipalView();
-    }
-
-    function renderCurrentView() {
-      const activeViewEl = document.querySelector('.view-section.active');
-      if (!activeViewEl) return switchTab('dashboard');
-      const viewId = activeViewEl.id.replace('view-', '');
-      switchTab(viewId);
     }
 
     document.addEventListener("DOMContentLoaded", () => {
       init();
+      setInterval(init, 5000); // Auto refresh every 5 seconds
     });
   </script>
 </body>
