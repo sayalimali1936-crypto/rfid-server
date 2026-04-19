@@ -149,48 +149,38 @@ res.send(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Smart Attendance</title>
+<title>Smart Attendance System</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 
 <style>
-:root{
- --bg:#0b1220;
- --card:#111827;
- --accent:#2563eb;
- --text:#e5e7eb;
- --muted:#94a3b8;
-}
-
 body{
  margin:0;
  font-family:Segoe UI;
- background:linear-gradient(135deg,#0b1220,#020617);
- color:var(--text);
+ background:linear-gradient(135deg,#020617,#0f172a);
+ color:#e2e8f0;
  display:flex;
 }
 
 /* SIDEBAR */
 .sidebar{
  width:250px;
- padding:20px;
  background:#020617;
+ padding:20px;
  border-right:1px solid #1e293b;
 }
 
 .logo{
  font-size:18px;
- font-weight:600;
- margin-bottom:25px;
+ margin-bottom:20px;
  display:flex;
  align-items:center;
- gap:8px;
+ gap:10px;
 }
 
 .nav{
  display:flex;
- align-items:center;
  gap:10px;
  padding:12px;
  margin:8px 0;
@@ -200,120 +190,106 @@ body{
 }
 
 .nav:hover{
- background:rgba(37,99,235,0.2);
- transform:translateX(4px);
+ background:#1e293b;
+ transform:translateX(5px);
 }
 
 .active{
- background:var(--accent);
+ background:#2563eb;
 }
 
 /* MAIN */
 .main{
  flex:1;
- padding:30px;
- animation:fade .5s ease;
+ padding:25px;
+ animation:fade .4s ease;
 }
 
 @keyframes fade{
  from{opacity:0; transform:translateY(10px)}
- to{opacity:1; transform:translateY(0)}
-}
-
-/* HEADER */
-.header{
- font-size:24px;
- margin-bottom:20px;
+ to{opacity:1}
 }
 
 /* CARDS */
 .cards{
  display:flex;
- gap:20px;
- margin-bottom:25px;
+ gap:15px;
+ margin-bottom:20px;
 }
 
 .card{
  flex:1;
- padding:20px;
- border-radius:14px;
  background:rgba(255,255,255,0.05);
+ padding:20px;
+ border-radius:12px;
  backdrop-filter:blur(10px);
  transition:.3s;
- position:relative;
- overflow:hidden;
 }
 
 .card:hover{
  transform:translateY(-5px);
- box-shadow:0 10px 30px rgba(0,0,0,0.4);
 }
 
 .card h3{
- font-size:13px;
- color:var(--muted);
  margin:0;
+ font-size:13px;
+ color:#94a3b8;
 }
 
 .value{
- font-size:28px;
+ font-size:26px;
  margin-top:8px;
 }
 
 /* TABLE */
-.table{
- background:var(--card);
- border-radius:14px;
- overflow:hidden;
-}
-
 table{
  width:100%;
  border-collapse:collapse;
+ margin-top:20px;
 }
 
-th{
- background:#020617;
- color:var(--muted);
- padding:12px;
- text-align:left;
+th,td{
+ padding:10px;
+ border-bottom:1px solid #1e293b;
 }
 
-td{
- padding:12px;
- border-top:1px solid #1e293b;
- transition:.2s;
-}
-
-tr:hover td{
- background:rgba(37,99,235,0.1);
+tr:hover{
+ background:#1e293b;
 }
 
 .red{color:#ef4444}
 .green{color:#22c55e}
 
-/* CHART */
-.chart-box{
- margin-top:20px;
- padding:20px;
- background:var(--card);
- border-radius:14px;
-}
-
 /* VIEW */
 .view{display:none}
 .view.active{display:block}
+
+/* INPUT */
+input,select{
+ padding:8px;
+ border-radius:6px;
+ margin-right:10px;
+ margin-bottom:10px;
+}
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
+
 <div class="logo">
-<i data-lucide="layout-dashboard"></i> System
+<i data-lucide="layout-dashboard"></i> Attendance
 </div>
 
-<div class="nav active" onclick="switchView('home',this)">
+<select id="classFilter">
+<option value="">All Classes</option>
+<option>SE</option>
+<option>TE</option>
+<option>BE</option>
+</select>
+
+<div class="nav active" onclick="switchView('dashboard',this)">
 <i data-lucide="home"></i> Dashboard
 </div>
 
@@ -325,66 +301,73 @@ tr:hover td{
 <i data-lucide="building"></i> HOD
 </div>
 
+<div class="nav" onclick="switchView('principal',this)">
+<i data-lucide="graduation-cap"></i> Principal
+</div>
+
 </div>
 
 <div class="main">
 
-<!-- HOME -->
-<div id="home" class="view active">
-
-<div class="header">Overview</div>
+<!-- DASHBOARD -->
+<div id="dashboard" class="view active">
 
 <div class="cards">
-<div class="card">
-<h3>Total Subjects</h3>
-<div class="value" id="subjects"></div>
+<div class="card"><h3>Present</h3><div class="value" id="present"></div></div>
+<div class="card"><h3>Absent</h3><div class="value" id="absent"></div></div>
+<div class="card"><h3>Attendance %</h3><div class="value" id="percent"></div></div>
 </div>
 
-<div class="card">
-<h3>Total Students</h3>
-<div class="value" id="students"></div>
-</div>
-
-<div class="card">
-<h3>Defaulters</h3>
-<div class="value" id="def"></div>
-</div>
-</div>
-
-<div class="chart-box">
 <canvas id="chart"></canvas>
-</div>
 
 </div>
 
 <!-- FACULTY -->
 <div id="faculty" class="view">
 
-<div class="header">Student Report</div>
+<input id="search" placeholder="Search Student...">
 
-<div class="table">
 <table>
 <thead>
 <tr><th>Name</th><th>Subject</th><th>%</th><th>Status</th></tr>
 </thead>
-<tbody id="fTable"></tbody>
+<tbody id="facultyTable"></tbody>
 </table>
-</div>
 
 </div>
 
 <!-- HOD -->
 <div id="hod" class="view">
 
-<div class="header">Subject Summary</div>
+<select id="subjectFilter"></select>
 
-<div class="table">
+<div class="cards">
+<div class="card"><h3>Present</h3><div class="value" id="hPresent"></div></div>
+<div class="card"><h3>Total</h3><div class="value" id="hTotal"></div></div>
+<div class="card"><h3>%</h3><div class="value" id="hPercent"></div></div>
+</div>
+
 <table>
 <thead>
-<tr><th>Subject</th><th>Lectures</th></tr>
+<tr><th>Subject</th><th>Attendance</th></tr>
 </thead>
-<tbody id="hTable"></tbody>
+<tbody id="hodTable"></tbody>
 </table>
+
+</div>
+
+<!-- PRINCIPAL -->
+<div id="principal" class="view">
+
+<h2>Departments</h2>
+
+<div class="cards">
+<div class="card">⚡ Electrical</div>
+<div class="card">💻 Computer</div>
+<div class="card">🏗 Civil</div>
+<div class="card">⚙ Mechanical</div>
+<div class="card">📡 ENTC</div>
+<div class="card">🎓 First Year</div>
 </div>
 
 </div>
@@ -392,80 +375,78 @@ tr:hover td{
 </div>
 
 <script>
-lucide.createIcons();
 
-let chart;
+lucide.createIcons();
 
 function switchView(id,el){
  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
  document.getElementById(id).classList.add("active");
 
  document.querySelectorAll(".nav").forEach(n=>n.classList.remove("active"));
- if(el) el.classList.add("active");
+ el.classList.add("active");
 }
+
+let chart;
 
 async function load(){
 
- const res=await fetch("/api/advanced");
+ const res=await fetch("/api/dashboard");
  const d=await res.json();
 
- let subjects=Object.keys(d.subjectLectures).length;
- let students=Object.keys(d.report).length;
- let def=0;
+ let total=d.total;
+ let present=d.total;
+ let absent=0;
 
- let f="";
+ let percent=((present/(present+absent))*100).toFixed(1);
 
- Object.entries(d.report).forEach(([name,list])=>{
-  list.forEach(s=>{
-   if(s.defaulter) def++;
+ document.getElementById("present").innerText=present;
+ document.getElementById("absent").innerText=absent;
+ document.getElementById("percent").innerText=percent+"%";
 
-   f+=\`<tr>
-   <td>\${name}</td>
-   <td>\${s.subject}</td>
-   <td>\${s.percent}%</td>
-   <td class="\${s.defaulter?'red':'green'}">\${s.defaulter?'Defaulter':'OK'}</td>
-   </tr>\`;
-  });
- });
-
- subjectsEl = document.getElementById("subjects");
- studentsEl = document.getElementById("students");
- defEl = document.getElementById("def");
-
- subjectsEl.innerText=subjects;
- studentsEl.innerText=students;
- defEl.innerText=def;
-
- fTable.innerHTML=f;
-
- let h="";
- Object.entries(d.subjectLectures).forEach(([s,v])=>{
-  h+=\`<tr><td>\${s}</td><td>\${v}</td></tr>\`;
- });
-
- hTable.innerHTML=h;
-
+ /* CHART */
  if(chart) chart.destroy();
 
  chart=new Chart(document.getElementById("chart"),{
   type:"bar",
   data:{
-   labels:Object.keys(d.subjectLectures),
+   labels:Object.keys(d.subjectWise),
    datasets:[{
-     data:Object.values(d.subjectLectures),
-     backgroundColor:"#2563eb",
-     borderRadius:6
+    data:Object.values(d.subjectWise),
+    backgroundColor:"#2563eb"
    }]
-  },
-  options:{
-   plugins:{legend:{display:false}},
-   scales:{y:{beginAtZero:true}}
   }
  });
+
+ /* FACULTY TABLE */
+ let f="";
+ Object.entries(d.studentWise).forEach(([name,count])=>{
+  let p=(count/total*100).toFixed(1);
+  f+=\`<tr>
+  <td>\${name}</td>
+  <td>-</td>
+  <td>\${p}%</td>
+  <td class="\${p<75?'red':'green'}">\${p<75?'Defaulter':'OK'}</td>
+  </tr>\`;
+ });
+
+ facultyTable.innerHTML=f;
+
+ /* HOD */
+ let h="";
+ Object.entries(d.subjectWise).forEach(([s,v])=>{
+  h+=\`<tr><td>\${s}</td><td>\${v}</td></tr>\`;
+ });
+
+ hodTable.innerHTML=h;
+
+ document.getElementById("hPresent").innerText=present;
+ document.getElementById("hTotal").innerText=total;
+ document.getElementById("hPercent").innerText=percent+"%";
 
 }
 
 load();
+
 </script>
 
 </body>
