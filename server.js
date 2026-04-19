@@ -315,16 +315,24 @@ app.get("/dashboard", (req, res) => {
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
     :root {
-      --bg-dark: #121212;
-      --bg-card: #1e1e1e;
-      --bg-hover: #292929;
-      --primary: #10b981;
-      --primary-hover: #059669;
-      --text-main: #f9fafb;
-      --text-muted: #9ca3af;
-      --border-color: #374151;
-      --danger: #f43f5e;
-      --success: #10b981;
+      --bg-dark: #ecf0f5;
+      --bg-card: #ffffff;
+      --bg-hover: #f9fafb;
+      --primary: #3c8dbc;
+      --primary-hover: #367fa9;
+      --text-main: #333333;
+      --text-muted: #777777;
+      --border-color: #d2d6de;
+      --sidebar-bg: #222d32;
+      --sidebar-hover: #1e282c;
+      --sidebar-text: #b8c7ce;
+      --danger: #dd4b39;
+      --success: #00a65a;
+      --color-aqua: #00c0ef;
+      --color-yellow: #f39c12;
+      --color-green: #00a65a;
+      --color-red: #dd4b39;
+      --color-purple: #605ca8;
       --transition: all 0.3s ease;
     }
 
@@ -339,23 +347,23 @@ app.get("/dashboard", (req, res) => {
     ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
     /* Sidebar */
-    .sidebar { width: 260px; background-color: var(--bg-card); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 24px 0; transition: var(--transition); z-index: 10; }
-    .logo-container { padding: 0 24px 24px; border-bottom: 1px solid var(--border-color); margin-bottom: 16px; display: flex; align-items: center; gap: 12px; font-size: 1.25rem; font-weight: 700; color: white; }
-    .logo-icon { width: 32px; height: 32px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+    .sidebar { width: 260px; background-color: var(--sidebar-bg); border-right: none; display: flex; flex-direction: column; padding: 24px 0; transition: var(--transition); z-index: 10; color: var(--sidebar-text); }
+    .logo-container { padding: 0 24px 24px; border-bottom: 1px solid #1a2226; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; font-size: 1.25rem; font-weight: 700; color: #ffffff; }
+    .logo-icon { width: 32px; height: 32px; background: var(--primary); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #fff;}
     
-    .nav-item { padding: 12px 24px; margin: 4px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-weight: 500; transition: var(--transition); position: relative; }
-    .nav-item:hover { background-color: var(--bg-hover); color: white; transform: translateX(8px); }
-    .nav-item.active { background-color: rgba(59, 130, 246, 0.1); color: var(--primary); }
-    .nav-item.active::before { content: ""; position: absolute; left: -16px; top: 0; height: 100%; width: 4px; background: var(--primary); border-radius: 0 4px 4px 0; }
+    .nav-item { padding: 12px 24px; margin: 4px 16px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--sidebar-text); font-weight: 500; transition: var(--transition); position: relative; }
+    .nav-item:hover { background-color: var(--sidebar-hover); color: #ffffff; }
+    .nav-item.active { background-color: var(--sidebar-hover); color: #ffffff; border-left: 3px solid var(--primary); }
+    .nav-item.active::before { display: none; }
     
-    .sidebar-footer { margin-top: auto; padding: 24px; border-top: 1px solid var(--border-color); }
-    .custom-select, .search-input { width: 100%; background: var(--bg-dark); color: var(--text-main); border: 1px solid var(--border-color); padding: 10px 14px; border-radius: 8px; outline: none; transition: var(--transition); font-size: 0.9rem; }
-    .custom-select:focus, .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+    .sidebar-footer { margin-top: auto; padding: 24px; border-top: 1px solid #1a2226; }
+    .custom-select, .search-input { width: 100%; background: #ffffff; color: var(--text-main); border: 1px solid var(--border-color); padding: 10px 14px; border-radius: 4px; outline: none; transition: var(--transition); font-size: 0.9rem; }
+    .custom-select:focus, .search-input:focus { border-color: var(--primary); }
     
     /* Main Content */
     .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; background-color: var(--bg-dark); }
-    .topbar { height: 72px; background-color: rgba(30, 41, 59, 0.9); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 32px; justify-content: space-between; position: sticky; top: 0; z-index: 5; }
-    .page-title { font-size: 1.25rem; font-weight: 600; color: white; display: flex; align-items: center; gap: 8px; }
+    .topbar { height: 60px; background-color: var(--primary); border-bottom: none; display: flex; align-items: center; padding: 0 32px; justify-content: space-between; position: sticky; top: 0; z-index: 5; color: #ffffff;}
+    .page-title { font-size: 1.25rem; font-weight: 600; color: #ffffff; display: flex; align-items: center; gap: 8px; }
     .container { padding: 32px; }
 
     /* Views */
@@ -365,38 +373,47 @@ app.get("/dashboard", (req, res) => {
 
     /* Cards */
     .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 24px; }
-    .stat-card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease; display: flex; flex-direction: column; gap: 8px; }
-    .stat-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); border-color: var(--primary); }
-    .stat-title { color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; display:flex; align-items:center; gap:6px;}
-    .stat-value { font-size: 2rem; font-weight: 700; color: white; display: flex; align-items: baseline; gap: 8px; }
+    .stat-card { background-color: var(--bg-card); border-radius: 4px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24); transition: transform 0.3s ease, box-shadow 0.3s ease; display: flex; flex-direction: column; gap: 8px; position: relative; overflow: hidden; }
+    .stat-card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23); }
+    .stat-title { color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; display:flex; align-items:center; gap:6px; z-index: 2;}
+    .stat-value { font-size: 2.2rem; font-weight: 700; color: var(--text-main); display: flex; align-items: baseline; gap: 8px; z-index: 2;}
+    
+    .card-aqua { background-color: var(--color-aqua) !important; color: #fff !important; }
+    .card-yellow { background-color: var(--color-yellow) !important; color: #fff !important; }
+    .card-green { background-color: var(--color-green) !important; color: #fff !important; }
+    .card-red { background-color: var(--color-red) !important; color: #fff !important; }
+    .card-purple { background-color: var(--color-purple) !important; color: #fff !important; }
+    
+    .colored .stat-title, .colored .stat-value { color: #ffffff !important; }
+    .colored::after { content:""; position:absolute; right: -20px; top: -10px; font-size: 80px; color: rgba(0,0,0,0.15); font-family: sans-serif; z-index: 1;}
 
     /* Chart Box */
     .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; margin-bottom: 24px; }
-    .chart-box { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); width: 100%; position:relative; }
-    .chart-title { color: white; font-weight: 600; font-size: 1rem; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;}
+    .chart-box { background-color: var(--bg-card); border-top: 3px solid var(--primary); border-radius: 3px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); width: 100%; position:relative; }
+    .chart-title { color: var(--text-main); font-weight: 600; font-size: 1rem; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;}
     .chart-container { position: relative; height: 280px; width: 100%; }
 
     /* Filters Bar */
-    .filters-bar { display: flex; gap: 16px; margin-bottom: 24px; background: var(--bg-card); padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); align-items: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    .filters-bar { display: flex; gap: 16px; margin-bottom: 24px; background: var(--bg-card); padding: 16px; border-radius: 3px; border-top: 3px solid var(--primary); align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
     
     /* Table */
-    .table-container { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-bottom: 24px;}
+    .table-container { background-color: var(--bg-card); border-top: 3px solid var(--primary); border-radius: 3px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.12); margin-bottom: 24px;}
     table { width: 100%; border-collapse: collapse; text-align: left; }
-    th { background: rgba(15, 23, 42, 0.5); color: var(--text-muted); font-weight: 600; padding: 14px 24px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); }
+    th { background: #f9fafb; color: var(--text-muted); font-weight: 600; padding: 14px 24px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); }
     td { padding: 14px 24px; border-bottom: 1px solid var(--border-color); color: var(--text-main); font-size: 0.9rem; }
     tbody tr { transition: var(--transition); }
-    tbody tr:hover { background-color: rgba(59, 130, 246, 0.05); }
+    tbody tr:hover { background-color: #f4f6f9; }
 
-    .badge { padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; display: inline-block; }
-    .badge-success { background: rgba(34, 197, 94, 0.15); color: var(--success); border: 1px solid rgba(34, 197, 94, 0.2); }
-    .badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
+    .badge { padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; display: inline-block; color: #fff; }
+    .badge-success { background: var(--success); }
+    .badge-danger { background: var(--danger); }
 
     /* Dept Cards */
     .dept-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
-    .dept-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 32px 24px; text-align: center; cursor: pointer; transition: transform 0.3s ease, border-color 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 16px; }
-    .dept-card:hover { transform: translateY(-6px); border-color: var(--primary); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+    .dept-card { background: var(--bg-card); border-top: 3px solid var(--color-aqua); border-radius: 3px; padding: 32px 24px; text-align: center; cursor: pointer; transition: transform 0.3s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.12); display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .dept-card:hover { transform: translateY(-4px); box-shadow: 0 10px 20px rgba(0,0,0,0.19); border-color: var(--primary); }
     .dept-icon { font-size: 2.5rem; }
-    .dept-title { font-size: 1.1rem; font-weight: 600; color: white; }
+    .dept-title { font-size: 1.1rem; font-weight: 600; color: var(--text-main); }
 
   </style>
 </head>
@@ -447,15 +464,15 @@ app.get("/dashboard", (req, res) => {
       <!-- 1. DASHBOARD VIEW -->
       <section id="view-dashboard" class="view-section active">
         <div class="grid-cards">
-          <div class="stat-card">
+          <div class="stat-card colored card-aqua">
             <div class="stat-title">🟢 Total Present Today</div>
             <div class="stat-value" id="dash-present">0</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card colored card-yellow">
             <div class="stat-title">🔴 Total Absent Today</div>
             <div class="stat-value" id="dash-absent">0</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card colored card-green">
             <div class="stat-title">📊 Today's % Attendance</div>
             <div class="stat-value" id="dash-pct">0%</div>
           </div>
@@ -481,15 +498,15 @@ app.get("/dashboard", (req, res) => {
           </select>
         </div>
         <div class="grid-cards">
-          <div class="stat-card">
+          <div class="stat-card colored card-purple">
              <div class="stat-title">Total Lectures Conducted</div>
              <div class="stat-value" id="fac-lec-total">0</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card colored card-aqua">
              <div class="stat-title">Student Attended Lectures</div>
              <div class="stat-value" id="fac-lec-attended">0</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card colored card-green">
              <div class="stat-title">% Attendance</div>
              <div class="stat-value" id="fac-att-pct">0%</div>
           </div>
@@ -518,15 +535,15 @@ app.get("/dashboard", (req, res) => {
           </select>
         </div>
         <div class="grid-cards">
-          <div class="stat-card">
+          <div class="stat-card colored card-aqua">
              <div class="stat-title">Total Present Today</div>
              <div class="stat-value" id="hod-present">0</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card colored card-yellow">
              <div class="stat-title">Total Students</div>
              <div class="stat-value" id="hod-total">0</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card colored card-green">
              <div class="stat-title">% Attendance</div>
              <div class="stat-value" id="hod-pct">0%</div>
           </div>
@@ -893,7 +910,7 @@ app.get("/dashboard", (req, res) => {
       if (instance) instance.destroy();
       const ctx = document.getElementById(canvasId).getContext("2d");
       
-      Chart.defaults.color = '#94a3b8';
+      Chart.defaults.color = '#777777';
       Chart.defaults.font.family = 'Inter';
 
       return new Chart(ctx, {
@@ -903,10 +920,10 @@ app.get("/dashboard", (req, res) => {
           datasets: [{
             label: labelText,
             data: data,
-            backgroundColor: type === 'bar' ? color : 'rgba(16, 185, 129, 0.1)',
+            backgroundColor: type === 'bar' ? color : 'rgba(60, 141, 188, 0.1)',
             borderColor: color,
             borderWidth: type === 'line' ? 3 : 0,
-            borderRadius: type === 'bar' ? 4 : 0,
+            borderRadius: type === 'bar' ? 2 : 0,
             fill: type === 'line',
             tension: 0.3
           }]
@@ -916,10 +933,10 @@ app.get("/dashboard", (req, res) => {
           maintainAspectRatio: false,
           plugins: { 
              legend: { display: false },
-             tooltip: { backgroundColor: '#1e293b', titleColor: '#fff', bodyColor: '#fff', borderColor: '#334155', borderWidth: 1 }
+             tooltip: { backgroundColor: '#ffffff', titleColor: '#333333', bodyColor: '#333333', borderColor: '#d2d6de', borderWidth: 1 }
           },
           scales: {
-            y: { beginAtZero: true, max: (labelText.includes('%') ? 100 : undefined), grid: { color: 'rgba(51, 65, 85, 0.4)' } },
+            y: { beginAtZero: true, max: (labelText.includes('%') ? 100 : undefined), grid: { color: '#ecf0f5' } },
             x: { grid: { display: false } }
           }
         }
