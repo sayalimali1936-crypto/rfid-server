@@ -1,3 +1,4 @@
+// ================== IMPORT ==================
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -7,17 +8,20 @@ const PORT = process.env.PORT || 10000;
 
 const csvPath = path.join(__dirname, "attendance.csv");
 
-/* ================= INIT ================= */
+// ================== INIT ==================
 if (!fs.existsSync(csvPath)) {
  fs.writeFileSync(csvPath,"Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
 }
 
-/* ================= API ================= */
-app.get("/api/dashboard",(req,res)=>{
+// ================== ROOT ==================
+app.get("/",(req,res)=>res.redirect("/dashboard"));
 
- const data = fs.readFileSync(csvPath,"utf8").split("\n").slice(1);
+// ================== CORE ANALYTICS ==================
+app.get("/api/analytics",(req,res)=>{
 
- let records = data.map(l=>{
+ const raw = fs.readFileSync(csvPath,"utf8").split("\n").slice(1);
+
+ let records = raw.map(l=>{
   let p=l.split(",");
   if(p.length<8) return null;
   return {
@@ -29,7 +33,7 @@ app.get("/api/dashboard",(req,res)=>{
   };
  }).filter(x=>x && x.name);
 
- /* LECTURES */
+ // -------- lectures ----------
  let lectureSet=new Set();
  records.forEach(r=>lectureSet.add(r.subject+"_"+r.date));
 
@@ -39,7 +43,7 @@ app.get("/api/dashboard",(req,res)=>{
   subjectLectures[s]=(subjectLectures[s]||0)+1;
  });
 
- /* STUDENT */
+ // -------- student ----------
  let studentMap={};
  records.forEach(r=>{
   if(!studentMap[r.name]) studentMap[r.name]={};
@@ -47,16 +51,23 @@ app.get("/api/dashboard",(req,res)=>{
  });
 
  let report={};
+ let defaulters=0;
+
  Object.keys(studentMap).forEach(name=>{
   report[name]=[];
+
   Object.keys(studentMap[name]).forEach(sub=>{
     let attended=studentMap[name][sub];
     let total=subjectLectures[sub]||1;
-    let percent=((attended/total)*100).toFixed(1);
+    let percent=(attended/total)*100;
+
+    if(percent<75) defaulters++;
 
     report[name].push({
       subject:sub,
-      percent,
+      attended,
+      total,
+      percent:percent.toFixed(1),
       defaulter:percent<75
     });
   });
@@ -67,79 +78,129 @@ app.get("/api/dashboard",(req,res)=>{
  res.json({
   report,
   subjectLectures,
-  present: totalStudents,
-  absent: 0,
-  percent: "100"
+  totalStudents,
+  defaulters
  });
 
 });
 
-/* ================= DASHBOARD ================= */
+// ================== DASHBOARD ==================
 app.get("/dashboard",(req,res)=>{
-res.send(`<!DOCTYPE html>
+res.send(`
+<!DOCTYPE html>
 <html>
 <head>
-<title>Attendance System</title>
+<title>Enterprise Dashboard</title>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{margin:0;font-family:Segoe UI;background:#0f172a;color:white;display:flex}
+
+:root{
+ --bg:#0f172a;
+ --card:rgba(255,255,255,0.05);
+ --accent:#3b82f6;
+ --text:#e2e8f0;
+}
+
+body{
+ margin:0;
+ font-family:Segoe UI;
+ background:linear-gradient(135deg,#020617,#0f172a);
+ color:var(--text);
+ display:flex;
+}
 
 /* SIDEBAR */
 .sidebar{
- width:230px;
- background:#020617;
+ width:240px;
  padding:20px;
+ background:#020617;
  border-right:1px solid #1e293b;
-}
-
-.logo{
- font-size:18px;
- margin-bottom:20px;
 }
 
 .nav{
  padding:12px;
- margin:6px 0;
+ margin:8px 0;
  border-radius:8px;
- background:#1e293b;
  cursor:pointer;
+ transition:.3s;
+ background:#1e293b;
 }
-.nav:hover{background:#2563eb}
-.active{background:#2563eb}
+
+.nav:hover{
+ transform:translateX(5px);
+ background:var(--accent);
+}
+
+.active{background:var(--accent)}
 
 /* MAIN */
 .main{
  flex:1;
- padding:20px;
+ padding:25px;
+ animation:fade .5s ease;
+}
+
+@keyframes fade{
+ from{opacity:0; transform:translateY(10px)}
+ to{opacity:1}
 }
 
 /* CARDS */
 .cards{
  display:flex;
- gap:15px;
+ gap:20px;
  margin-bottom:20px;
 }
 
 .card{
  flex:1;
- background:#1e293b;
- padding:15px;
- border-radius:10px;
- text-align:center;
+ padding:20px;
+ border-radius:14px;
+ background:var(--card);
+ backdrop-filter:blur(10px);
+ transition:.3s;
 }
 
-.value{font-size:22px}
+.card:hover{
+ transform:translateY(-8px);
+ box-shadow:0 10px 25px rgba(0,0,0,0.4);
+}
+
+.card h3{
+ font-size:13px;
+ color:#94a3b8;
+ margin:0;
+}
+
+.value{
+ font-size:28px;
+ margin-top:8px;
+}
+
+/* CHART */
+.chart-box{
+ background:var(--card);
+ padding:20px;
+ border-radius:14px;
+ margin-top:20px;
+}
 
 /* TABLE */
 table{
  width:100%;
- border-collapse:collapse;
  margin-top:20px;
+ border-collapse:collapse;
 }
+
 td,th{
  padding:10px;
- border-bottom:1px solid #334155;
+ border-bottom:1px solid #1e293b;
+}
+
+tr:hover{
+ background:rgba(59,130,246,0.1);
 }
 
 .red{color:#ef4444}
@@ -148,17 +209,16 @@ td,th{
 /* VIEW */
 .view{display:none}
 .view.active{display:block}
+
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<div class="logo">📊 Attendance</div>
-
-<div class="nav active" onclick="show('home',this)">Dashboard</div>
-<div class="nav" onclick="show('faculty',this)">Faculty</div>
-<div class="nav" onclick="show('hod',this)">HOD</div>
+<div class="nav active" onclick="show('home',this)">📊 Dashboard</div>
+<div class="nav" onclick="show('faculty',this)">👨‍🏫 Faculty</div>
+<div class="nav" onclick="show('hod',this)">🏫 HOD</div>
 </div>
 
 <div class="main">
@@ -167,12 +227,17 @@ td,th{
 <div id="home" class="view active">
 
 <div class="cards">
-<div class="card">Present<div class="value" id="present"></div></div>
-<div class="card">Absent<div class="value" id="absent"></div></div>
-<div class="card">%<div class="value" id="percent"></div></div>
+<div class="card"><h3>Total Students</h3><div class="value" id="students"></div></div>
+<div class="card"><h3>Defaulters</h3><div class="value" id="def"></div></div>
 </div>
 
-<canvas id="chart"></canvas>
+<div class="chart-box">
+<canvas id="barChart"></canvas>
+</div>
+
+<div class="chart-box">
+<canvas id="lineChart"></canvas>
+</div>
 
 </div>
 
@@ -208,58 +273,78 @@ function show(id,el){
  el.classList.add("active");
 }
 
-let chart;
+let barChart,lineChart;
 
 async function load(){
 
- const res=await fetch("/api/dashboard");
+ const res=await fetch("/api/analytics");
  const d=await res.json();
 
- present.innerText=d.present;
- absent.innerText=d.absent;
- percent.innerText=d.percent+"%";
+ students.innerText=d.totalStudents;
+ def.innerText=d.defaulters;
 
- /* CHART */
- if(chart) chart.destroy();
+ /* BAR CHART */
+ if(barChart) barChart.destroy();
 
- chart=new Chart(document.getElementById("chart"),{
+ barChart=new Chart(document.getElementById("barChart"),{
   type:"bar",
   data:{
    labels:Object.keys(d.subjectLectures),
    datasets:[{
     data:Object.values(d.subjectLectures),
-    backgroundColor:"#2563eb"
+    backgroundColor:"#3b82f6"
    }]
+  },
+  options:{
+   animation:{duration:1200},
+   plugins:{legend:{display:false}}
   }
  });
 
- /* FACULTY */
+ /* LINE CHART (fake weekly trend for now) */
+ if(lineChart) lineChart.destroy();
+
+ lineChart=new Chart(document.getElementById("lineChart"),{
+  type:"line",
+  data:{
+   labels:["Mon","Tue","Wed","Thu","Fri"],
+   datasets:[{
+    data:[70,75,80,78,85],
+    borderColor:"#22c55e",
+    tension:.4
+   }]
+  },
+  options:{
+   animation:{duration:1200},
+   plugins:{legend:{display:false}}
+  }
+ });
+
+ /* TABLE */
  let f="";
  Object.entries(d.report).forEach(([name,list])=>{
   list.forEach(s=>{
-    f+=\`<tr>
-    <td>\${name}</td>
-    <td>\${s.subject}</td>
-    <td>\${s.percent}%</td>
-    <td class="\${s.defaulter?'red':'green'}">
-    \${s.defaulter?'Defaulter':'OK'}
-    </td>
-    </tr>\`;
+   f+=\`<tr>
+   <td>\${name}</td>
+   <td>\${s.subject}</td>
+   <td>\${s.percent}%</td>
+   <td class="\${s.defaulter?'red':'green'}">
+   \${s.defaulter?'Defaulter':'OK'}
+   </td>
+   </tr>\`;
   });
  });
-
  fTable.innerHTML=f;
 
- /* HOD */
  let h="";
  Object.entries(d.subjectLectures).forEach(([s,v])=>{
   h+=\`<tr><td>\${s}</td><td>\${v}</td></tr>\`;
  });
-
  hTable.innerHTML=h;
 
 }
 
+setInterval(load,5000);
 load();
 
 </script>
@@ -269,7 +354,7 @@ load();
 `);
 });
 
-/* ================= START ================= */
+// ================== START ==================
 app.get("/", (req,res)=> res.redirect("/dashboard"));
 
-app.listen(PORT,()=>console.log("🚀 Server running"));
+app.listen(PORT,()=>console.log("🚀 Production Server Running"));
