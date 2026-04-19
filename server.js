@@ -448,4 +448,7 @@ setInterval(loadData,5000);
 </html>
   `);
 });
+// ================== START ==================
+app.get("/", (req,res)=> res.redirect("/dashboard"));
+app.listen(PORT,()=>console.log("🚀 Production Server Running"));
 
