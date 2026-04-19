@@ -150,7 +150,7 @@ res.send(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Smart Attendance System</title>
+<title>Smart Attendance Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
@@ -164,22 +164,21 @@ body{
 
 /* SIDEBAR */
 .sidebar{
- width:230px;
+ width:240px;
  background:#020617;
  padding:20px;
- border-right:1px solid #334155;
 }
 
 .nav{
  padding:12px;
- margin:8px 0;
+ margin:10px 0;
  background:#1e293b;
  border-radius:8px;
  cursor:pointer;
 }
 
-.nav:hover{background:#6366f1}
-.active{background:#6366f1}
+.nav:hover{background:#4f46e5}
+.active{background:#4f46e5}
 
 /* MAIN */
 .main{
@@ -191,29 +190,18 @@ body{
 .cards{
  display:flex;
  gap:15px;
- margin-bottom:15px;
+ margin-bottom:20px;
 }
 
 .card{
  flex:1;
  padding:20px;
- border-radius:12px;
  background:#1e293b;
+ border-radius:10px;
  text-align:center;
 }
 
-.big{font-size:26px}
-
-/* FILTER */
-.filters{
- margin-bottom:10px;
-}
-
-input,select{
- padding:8px;
- margin-right:10px;
- border-radius:6px;
-}
+.big{font-size:24px}
 
 /* TABLE */
 table{
@@ -232,17 +220,18 @@ td,th{
 .view{display:none}
 .view.active{display:block}
 </style>
+
 </head>
 
 <body>
 
 <div class="sidebar">
-<h3>📊 Attendance</h3>
+<h3>📊 Dashboard</h3>
 
-<div class="nav active" onclick="switchView('home',this)">Home</div>
-<div class="nav" onclick="switchView('faculty',this)">Faculty</div>
-<div class="nav" onclick="switchView('hod',this)">HOD</div>
-<div class="nav" onclick="switchView('principal',this)">Principal</div>
+<div class="nav active" onclick="show('home',this)">Home</div>
+<div class="nav" onclick="show('faculty',this)">Faculty</div>
+<div class="nav" onclick="show('hod',this)">HOD</div>
+<div class="nav" onclick="show('principal',this)">Principal</div>
 
 </div>
 
@@ -252,9 +241,9 @@ td,th{
 <div id="home" class="view active">
 
 <div class="cards">
-<div class="card">Total Logs<div class="big" id="total"></div></div>
+<div class="card">Logs<div class="big" id="total"></div></div>
 <div class="card">Students<div class="big" id="students"></div></div>
-<div class="card">% Attendance<div class="big" id="percent"></div></div>
+<div class="card">%<div class="big" id="percent"></div></div>
 </div>
 
 <canvas id="chart"></canvas>
@@ -264,11 +253,9 @@ td,th{
 <!-- FACULTY -->
 <div id="faculty" class="view">
 
-<div class="filters">
 <input id="search" placeholder="Search student">
 <select id="subject"></select>
 <button onclick="load()">Apply</button>
-</div>
 
 <table>
 <thead>
@@ -282,10 +269,8 @@ td,th{
 <!-- HOD -->
 <div id="hod" class="view">
 
-<div class="filters">
 <select id="subject2"></select>
 <button onclick="load()">Apply</button>
-</div>
 
 <table>
 <thead>
@@ -300,12 +285,12 @@ td,th{
 <div id="principal" class="view">
 
 <div class="cards">
-<div class="card">Computer</div>
-<div class="card">Electrical</div>
-<div class="card">Civil</div>
-<div class="card">Mechanical</div>
-<div class="card">ENTC</div>
-<div class="card">First Year</div>
+<div class="card" onclick="show('hod')">Computer</div>
+<div class="card" onclick="show('hod')">Electrical</div>
+<div class="card" onclick="show('hod')">Civil</div>
+<div class="card" onclick="show('hod')">Mechanical</div>
+<div class="card" onclick="show('hod')">ENTC</div>
+<div class="card" onclick="show('hod')">First Year</div>
 </div>
 
 </div>
@@ -316,12 +301,12 @@ td,th{
 
 let chart;
 
-function switchView(id,el){
- document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
- document.getElementById(id).classList.add('active');
+function show(id,el){
+ document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+ document.getElementById(id).classList.add("active");
 
- document.querySelectorAll('.nav').forEach(n=>n.classList.remove('active'));
- if(el) el.classList.add('active');
+ document.querySelectorAll(".nav").forEach(n=>n.classList.remove("active"));
+ if(el) el.classList.add("active");
 }
 
 async function load(){
@@ -330,17 +315,15 @@ async function load(){
  const d=await res.json();
 
  let total=d.total;
- let studentList=Object.keys(d.studentWise);
- let students=studentList.length || 1;
+ let students=Object.keys(d.studentWise).length || 1;
+ let max=Math.max(...Object.values(d.studentWise));
 
- let maxAttendance=Math.max(...Object.values(d.studentWise));
- let percent=((total/(students*maxAttendance))*100).toFixed(1);
+ let percent=((total/(students*max))*100).toFixed(1);
 
- document.getElementById("total").innerText=total;
+ total && (totalEl=document.getElementById("total")).innerText=total;
  document.getElementById("students").innerText=students;
  document.getElementById("percent").innerText=percent+"%";
 
- /* SUBJECT FILTER */
  let subjects=Object.keys(d.subjectWise);
 
  subject.innerHTML='<option value="">All</option>';
@@ -358,23 +341,19 @@ async function load(){
   type:"bar",
   data:{
    labels:subjects,
-   datasets:[{
-     data:Object.values(d.subjectWise),
-     backgroundColor:"#6366f1"
-   }]
+   datasets:[{data:Object.values(d.subjectWise),backgroundColor:"#4f46e5"}]
   }
  });
 
- /* FACULTY TABLE (WITH SEARCH + FILTER) */
- let searchVal=document.getElementById("search").value.toLowerCase();
- let selectedSubject=subject.value;
-
+ /* FACULTY */
+ let search=document.getElementById("search").value.toLowerCase();
  let f="";
+
  Object.entries(d.studentWise).forEach(([n,c])=>{
 
-  if(searchVal && !n.toLowerCase().includes(searchVal)) return;
+  if(search && !n.toLowerCase().includes(search)) return;
 
-  let p=((c/maxAttendance)*100).toFixed(1);
+  let p=((c/max)*100).toFixed(1);
   let def=p<75;
 
   f+=\`<tr>
@@ -387,15 +366,16 @@ async function load(){
 
  fTable.innerHTML=f;
 
- /* HOD TABLE */
+ /* HOD */
  let h="";
+ let selected=subject2.value;
+
  Object.entries(d.subjectWise).forEach(([s,v])=>{
-  if(selectedSubject && s!==selectedSubject) return;
+  if(selected && s!==selected) return;
   h+=\`<tr><td>\${s}</td><td>\${v}</td></tr>\`;
  });
 
  hTable.innerHTML=h;
-
 }
 
 load();
@@ -405,7 +385,6 @@ load();
 </body>
 </html>`);
 });
-
 /* ================= START ================= */
 app.get("/",(req,res)=>res.redirect("/dashboard"));
 
