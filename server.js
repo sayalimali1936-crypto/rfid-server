@@ -1,4 +1,3 @@
-// ================== IMPORT ==================
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -8,15 +7,37 @@ const PORT = process.env.PORT || 10000;
 
 const csvPath = path.join(__dirname, "attendance.csv");
 
-// ================== INIT ==================
+/* ================= INIT ================= */
 if (!fs.existsSync(csvPath)) {
  fs.writeFileSync(csvPath,"Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
 }
 
-// ================== ROOT ==================
+/* ================= ROOT ================= */
 app.get("/",(req,res)=>res.redirect("/dashboard"));
 
-// ================== CORE ANALYTICS ==================
+/* ================= RFID LOG ================= */
+app.get("/log",(req,res)=>{
+ const card=req.query.card_no;
+ if(!card) return res.send("NO_CARD");
+
+ const now=new Date();
+
+ const csv=[
+  now.toISOString().slice(0,10),
+  now.toTimeString().slice(0,5),
+  "STUDENT",
+  "Unknown",
+  card,
+  "SE",
+  "A",
+  "Subject"
+ ].join(",")+"\n";
+
+ fs.appendFileSync(csvPath,csv);
+ res.send("OK");
+});
+
+/* ================= ANALYTICS ================= */
 app.get("/api/analytics",(req,res)=>{
 
  const raw = fs.readFileSync(csvPath,"utf8").split("\n").slice(1);
@@ -28,12 +49,10 @@ app.get("/api/analytics",(req,res)=>{
     date:p[0],
     name:p[3],
     className:p[5],
-    batch:p[6],
     subject:p[7]
   };
  }).filter(x=>x && x.name);
 
- // -------- lectures ----------
  let lectureSet=new Set();
  records.forEach(r=>lectureSet.add(r.subject+"_"+r.date));
 
@@ -43,15 +62,13 @@ app.get("/api/analytics",(req,res)=>{
   subjectLectures[s]=(subjectLectures[s]||0)+1;
  });
 
- // -------- student ----------
  let studentMap={};
  records.forEach(r=>{
   if(!studentMap[r.name]) studentMap[r.name]={};
   studentMap[r.name][r.subject]=(studentMap[r.name][r.subject]||0)+1;
  });
 
- let report={};
- let defaulters=0;
+ let report={}, defaulters=[];
 
  Object.keys(studentMap).forEach(name=>{
   report[name]=[];
@@ -61,61 +78,47 @@ app.get("/api/analytics",(req,res)=>{
     let total=subjectLectures[sub]||1;
     let percent=(attended/total)*100;
 
-    if(percent<75) defaulters++;
+    if(percent<75) defaulters.push(name);
 
     report[name].push({
       subject:sub,
-      attended,
-      total,
       percent:percent.toFixed(1),
       defaulter:percent<75
     });
   });
  });
 
- let totalStudents = Object.keys(studentMap).length;
-
  res.json({
   report,
   subjectLectures,
-  totalStudents,
-  defaulters
+  totalStudents:Object.keys(studentMap).length,
+  defaulters:[...new Set(defaulters)]
  });
 
 });
 
-// ================== DASHBOARD ==================
+/* ================= DASHBOARD ================= */
 app.get("/dashboard",(req,res)=>{
-res.send(`
-<!DOCTYPE html>
+res.send(`<!DOCTYPE html>
 <html>
 <head>
-<title>Enterprise Dashboard</title>
-
+<title>Attendance SaaS</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-
-:root{
- --bg:#0f172a;
- --card:rgba(255,255,255,0.05);
- --accent:#3b82f6;
- --text:#e2e8f0;
-}
-
 body{
  margin:0;
  font-family:Segoe UI;
  background:linear-gradient(135deg,#020617,#0f172a);
- color:var(--text);
+ color:#e2e8f0;
  display:flex;
 }
 
 /* SIDEBAR */
 .sidebar{
- width:240px;
- padding:20px;
+ width:250px;
  background:#020617;
+ padding:20px;
  border-right:1px solid #1e293b;
 }
 
@@ -123,17 +126,12 @@ body{
  padding:12px;
  margin:8px 0;
  border-radius:8px;
+ background:#1e293b;
  cursor:pointer;
  transition:.3s;
- background:#1e293b;
 }
-
-.nav:hover{
- transform:translateX(5px);
- background:var(--accent);
-}
-
-.active{background:var(--accent)}
+.nav:hover{background:#2563eb; transform:translateX(5px)}
+.active{background:#2563eb}
 
 /* MAIN */
 .main{
@@ -150,58 +148,33 @@ body{
 /* CARDS */
 .cards{
  display:flex;
- gap:20px;
+ gap:15px;
  margin-bottom:20px;
 }
 
 .card{
  flex:1;
+ background:rgba(255,255,255,0.05);
  padding:20px;
- border-radius:14px;
- background:var(--card);
+ border-radius:12px;
  backdrop-filter:blur(10px);
  transition:.3s;
 }
+.card:hover{transform:translateY(-5px)}
 
-.card:hover{
- transform:translateY(-8px);
- box-shadow:0 10px 25px rgba(0,0,0,0.4);
-}
-
-.card h3{
- font-size:13px;
- color:#94a3b8;
- margin:0;
-}
-
-.value{
- font-size:28px;
- margin-top:8px;
-}
-
-/* CHART */
-.chart-box{
- background:var(--card);
- padding:20px;
- border-radius:14px;
- margin-top:20px;
-}
+.value{font-size:26px}
 
 /* TABLE */
 table{
  width:100%;
- margin-top:20px;
  border-collapse:collapse;
+ margin-top:20px;
 }
-
 td,th{
  padding:10px;
- border-bottom:1px solid #1e293b;
+ border-bottom:1px solid #334155;
 }
-
-tr:hover{
- background:rgba(59,130,246,0.1);
-}
+tr:hover{background:#1e293b}
 
 .red{color:#ef4444}
 .green{color:#22c55e}
@@ -210,13 +183,18 @@ tr:hover{
 .view{display:none}
 .view.active{display:block}
 
+input{
+ padding:8px;
+ margin-bottom:10px;
+ border-radius:6px;
+}
 </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-<div class="nav active" onclick="show('home',this)">📊 Dashboard</div>
+<div class="nav active" onclick="show('dashboard',this)">📊 Dashboard</div>
 <div class="nav" onclick="show('faculty',this)">👨‍🏫 Faculty</div>
 <div class="nav" onclick="show('hod',this)">🏫 HOD</div>
 </div>
@@ -224,25 +202,21 @@ tr:hover{
 <div class="main">
 
 <!-- DASHBOARD -->
-<div id="home" class="view active">
+<div id="dashboard" class="view active">
 
 <div class="cards">
-<div class="card"><h3>Total Students</h3><div class="value" id="students"></div></div>
-<div class="card"><h3>Defaulters</h3><div class="value" id="def"></div></div>
+<div class="card">Students<div class="value" id="students"></div></div>
+<div class="card">Defaulters<div class="value" id="def"></div></div>
 </div>
 
-<div class="chart-box">
-<canvas id="barChart"></canvas>
-</div>
-
-<div class="chart-box">
-<canvas id="lineChart"></canvas>
-</div>
+<canvas id="chart"></canvas>
 
 </div>
 
 <!-- FACULTY -->
 <div id="faculty" class="view">
+
+<input id="search" placeholder="Search student">
 
 <table>
 <tr><th>Name</th><th>Subject</th><th>%</th><th>Status</th></tr>
@@ -273,77 +247,75 @@ function show(id,el){
  el.classList.add("active");
 }
 
-let barChart,lineChart;
+let chart,globalData;
 
 async function load(){
 
  const res=await fetch("/api/analytics");
  const d=await res.json();
+ globalData=d;
 
  students.innerText=d.totalStudents;
- def.innerText=d.defaulters;
+ def.innerText=d.defaulters.length;
 
- /* BAR CHART */
- if(barChart) barChart.destroy();
+ if(chart) chart.destroy();
 
- barChart=new Chart(document.getElementById("barChart"),{
+ chart=new Chart(document.getElementById("chart"),{
   type:"bar",
   data:{
    labels:Object.keys(d.subjectLectures),
    datasets:[{
     data:Object.values(d.subjectLectures),
-    backgroundColor:"#3b82f6"
+    backgroundColor:"#2563eb"
    }]
-  },
-  options:{
-   animation:{duration:1200},
-   plugins:{legend:{display:false}}
   }
  });
 
- /* LINE CHART (fake weekly trend for now) */
- if(lineChart) lineChart.destroy();
+ renderTable(d.report);
+ renderHOD(d.subjectLectures);
+}
 
- lineChart=new Chart(document.getElementById("lineChart"),{
-  type:"line",
-  data:{
-   labels:["Mon","Tue","Wed","Thu","Fri"],
-   datasets:[{
-    data:[70,75,80,78,85],
-    borderColor:"#22c55e",
-    tension:.4
-   }]
-  },
-  options:{
-   animation:{duration:1200},
-   plugins:{legend:{display:false}}
-  }
- });
-
- /* TABLE */
+function renderTable(report){
  let f="";
- Object.entries(d.report).forEach(([name,list])=>{
+ Object.entries(report).forEach(([name,list])=>{
   list.forEach(s=>{
-   f+=\`<tr>
-   <td>\${name}</td>
-   <td>\${s.subject}</td>
-   <td>\${s.percent}%</td>
-   <td class="\${s.defaulter?'red':'green'}">
-   \${s.defaulter?'Defaulter':'OK'}
-   </td>
-   </tr>\`;
+    f+=\`<tr>
+    <td>\${name}</td>
+    <td>\${s.subject}</td>
+    <td>\${s.percent}%</td>
+    <td class="\${s.defaulter?'red':'green'}">
+    \${s.defaulter?'Defaulter':'OK'}
+    </td>
+    </tr>\`;
   });
  });
  fTable.innerHTML=f;
+}
 
+function renderHOD(data){
  let h="";
- Object.entries(d.subjectLectures).forEach(([s,v])=>{
+ Object.entries(data).forEach(([s,v])=>{
   h+=\`<tr><td>\${s}</td><td>\${v}</td></tr>\`;
  });
  hTable.innerHTML=h;
-
 }
 
+/* SEARCH */
+search.addEventListener("input",()=>{
+ let val=search.value.toLowerCase();
+
+ let filtered={};
+
+ Object.keys(globalData.report).forEach(name=>{
+  if(name.toLowerCase().includes(val)){
+    filtered[name]=globalData.report[name];
+  }
+ });
+
+ renderTable(filtered);
+});
+
+/* AUTO REFRESH */
 setInterval(load,5000);
 load();
 
@@ -354,7 +326,6 @@ load();
 `);
 });
 
-// ================== START ==================
+/* ================= START ================= */
 app.get("/", (req,res)=> res.redirect("/dashboard"));
-
-app.listen(PORT,()=>console.log("🚀 Production Server Running"));
+app.listen(PORT,()=>console.log("🚀 SaaS Attendance Running on "+PORT));
