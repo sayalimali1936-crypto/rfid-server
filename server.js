@@ -1,373 +1,591 @@
 const express = require("express");
-const fs = require("fs");
+const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
+const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Path Setup (Unchanged)
+/* ============================================================
+   🔒 BACKEND SECTION (DO NOT MODIFY THIS PART)
+============================================================ */
+
+const dbPath = path.join(__dirname, "attendance.db");
 const csvPath = path.join(__dirname, "attendance.csv");
-const timetablePath = path.join(__dirname, "Time_Table.csv");
-const studentsPath = path.join(__dirname, "Students.csv");
-const staffPath = path.join(__dirname, "Staff_Master.csv");
 
-/* ================= CORE LOGIC (UNTOUCHED & ZEROED) ================= */
+const db = new sqlite3.Database(dbPath);
+
+db.run(`
+CREATE TABLE IF NOT EXISTS attendance (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ card_no TEXT,
+ timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
 if (!fs.existsSync(csvPath)) {
-    fs.writeFileSync(csvPath, "Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
+ fs.writeFileSync(csvPath,"Date,Time,Role,Name,Card_No,Class,Batch,Subject\n");
 }
 
+/* ================= LOAD CSV ================= */
 function loadCSV(file) {
-    try {
-        const data = fs.readFileSync(file, "utf8");
-        const lines = data.trim().split(/\r?\n/);
-        if (lines.length <= 1) return []; 
-        const headers = lines.shift().split(",");
-        return lines.map(l => {
-            let obj = {};
-            l.split(",").forEach((v, i) => obj[headers[i]] = v);
-            return obj;
-        });
-    } catch (e) { return []; }
+ const data = fs.readFileSync(path.join(__dirname, file), "utf8");
+ const lines = data.trim().split("\n");
+ const headers = lines.shift().split(",");
+
+ return lines.map(line => {
+  const values = line.split(",");
+  let obj = {};
+  headers.forEach((h, i) => obj[h.trim()] = values[i]?.trim());
+  return obj;
+ });
 }
 
-const timetable = loadCSV(timetablePath);
+const students = loadCSV("Students.csv");
+const staffMaster = loadCSV("Staff_Master.csv");
+const timetable = loadCSV("Time_Table.csv");
 
-function getAnalytics(filters) {
-    const raw = fs.readFileSync(csvPath, "utf8").split(/\r?\n/).slice(1);
-    let records = raw.map(l => {
-        let p = l.split(",");
-        if (p.length < 8) return null;
-        return { date: p[0], name: p[3], className: p[5], batch: p[6], subject: p[7] };
-    }).filter(x => x);
+/* ================= HELPERS ================= */
+function normalize(v){ return v?.toString().trim().toUpperCase(); }
 
-    // Apply Filter Logic
-    if (filters.className) records = records.filter(r => r.className === filters.className);
-    if (filters.subject) records = records.filter(r => r.subject === filters.subject);
-    if (filters.studentName) {
-        records = records.filter(r => r.name.toLowerCase().includes(filters.studentName.toLowerCase()));
-    }
-
-    // Dynamic Class Strength
-    const strengthMap = { "SE": 60, "TE": 55, "BE": 50 };
-    const totalCapacity = strengthMap[filters.className] || 60;
-
-    let subjectCounts = {};
-    records.forEach(r => { subjectCounts[r.subject] = (subjectCounts[r.subject] || 0) + 1; });
-    
-    let subjectPercents = {};
-    Object.keys(subjectCounts).forEach(s => {
-        subjectPercents[s] = Math.min(100, (subjectCounts[s] / totalCapacity) * 100).toFixed(1);
-    });
-
-    let present = records.length;
-    let percent = Math.min(100, (present / totalCapacity) * 100).toFixed(1);
-
-    return { 
-        present, 
-        absent: Math.max(0, totalCapacity - present),
-        percent, 
-        total: totalCapacity,
-        subjectPercents, 
-        records 
-    };
+function timeToMinutes(t){
+ const [h,m]=t.split(":").map(Number);
+ return h*60+m;
 }
 
-/* ================= UI SHELL (Vivid Professional Theme) ================= */
-function layout(title, content, currentDept = "") {
-    return `
+function identifyCard(cardNo){
+ const student = students.find(s=>normalize(s.card_no)===normalize(cardNo));
+ if(student) return {type:"STUDENT",data:student};
+
+ const staff = staffMaster.find(s=>normalize(s.staff_card_no)===normalize(cardNo));
+ if(staff) return {type:"STAFF",data:staff};
+
+ return {type:"UNKNOWN",data:null};
+}
+
+function getIndianTime(){
+ const utc=new Date();
+ const ist=new Date(utc.getTime()+19800000);
+ const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+ return {
+  date:ist.toISOString().slice(0,10),
+  time:ist.toTimeString().slice(0,5),
+  day:days[ist.getDay()]
+ };
+}
+
+function getActiveSlot(day,time,identity){
+ const now=timeToMinutes(time);
+
+ return timetable.find(slot=>{
+  if(normalize(slot.day)!==normalize(day)) return false;
+
+  const start=timeToMinutes(slot.start_time.slice(0,5));
+  const end=timeToMinutes(slot.end_time.slice(0,5));
+
+  if(now<start || now>end) return false;
+
+  if(identity.type==="STUDENT"){
+   return normalize(slot.class)===normalize(identity.data.class);
+  }
+
+  if(identity.type==="STAFF"){
+   return normalize(slot.staff_id)===normalize(identity.data.staff_id);
+  }
+
+  return false;
+ });
+}
+
+/* ================= RFID LOG ================= */
+app.get("/log",(req,res)=>{
+ const card=req.query.card_no;
+ if(!card) return res.send("NO_CARD");
+
+ const id=identifyCard(card);
+ if(id.type==="UNKNOWN") return res.send("UNKNOWN");
+
+ const {date,time,day}=getIndianTime();
+ const slot=getActiveSlot(day,time,id);
+ if(!slot) return res.send("NO_SLOT");
+
+ db.run(`INSERT INTO attendance (card_no) VALUES (?)`,[normalize(card)]);
+
+ const csv=[date,time,id.type,
+  id.data?.student_name || id.data?.staff_name,
+  card,
+  slot.class,
+  id.data?.batch || slot.batch,
+  slot.subject
+ ].join(",")+"\n";
+
+ fs.appendFileSync(csvPath,csv);
+ res.send("OK");
+});
+
+/* ================= API ================= */
+app.get("/api/dashboard",(req,res)=>{
+ const data=fs.readFileSync(csvPath,"utf8").split("\n").slice(1);
+
+ let records=data.map(l=>{
+  let p=l.split(",");
+  if(p.length<8) return null;
+  return {date:p[0],name:p[3],className:p[5],subject:p[7]};
+ }).filter(x=>x);
+
+ let subjectWise={},studentWise={};
+
+ records.forEach(r=>{
+  subjectWise[r.subject]=(subjectWise[r.subject]||0)+1;
+  studentWise[r.name]=(studentWise[r.name]||0)+1;
+ });
+
+ res.json({total:records.length,subjectWise,studentWise,records});
+});
+
+/* ============================================================
+   🎨 UI SECTION (ONLY THIS PART GIVE TO ANTIGRAVITY)
+============================================================ */
+
+```javascript
+app.get("/dashboard",(req,res)=>{
+res.send(`
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root { 
-            --indigo: #4f46e5; --emerald: #10b981; --rose: #f43f5e; --amber: #f59e0b;
-            --bg: #f9fafb; --sidebar: #ffffff; --text: #111827; 
-        }
-        body { margin:0; font-family:'Inter', sans-serif; background:var(--bg); color:var(--text); display:flex; height:100vh; overflow:hidden; }
-        
-        /* SIDEBAR */
-        .sidebar { width:270px; background:var(--sidebar); border-right:1px solid #e5e7eb; padding:30px 20px; display:flex; flex-direction:column; box-shadow: 2px 0 10px rgba(0,0,0,0.02); }
-        .logo { font-weight:900; color:var(--indigo); font-size:1.4rem; margin-bottom:40px; display:flex; align-items:center; gap:12px; }
-        .nav-label { font-size:0.7rem; font-weight:800; color:#9ca3af; text-transform:uppercase; margin:20px 0 10px 10px; letter-spacing:1px; }
-        .nav-item { padding:13px 18px; border-radius:14px; color:#4b5563; text-decoration:none; display:flex; align-items:center; gap:12px; transition:0.2s; font-weight:600; font-size:0.9rem; }
-        .nav-item:hover { background:#f3f4f6; color:var(--indigo); }
-        .nav-item.active { background:var(--indigo); color:white; box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3); }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enterprise RFID Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-        /* MAIN CONTENT */
-        .main { flex:1; overflow-y:auto; padding:40px; }
-        .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:35px; }
-        .dept-indicator { background: #eef2ff; color: var(--indigo); padding: 6px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 800; border: 1px solid #e0e7ff; }
-
-        /* KPI CARDS */
-        .stats-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:20px; margin-bottom:30px; }
-        .card { background:white; padding:25px; border-radius:22px; border:1px solid #f1f5f9; box-shadow:0 4px 6px -1px rgba(0,0,0,0.03); position:relative; overflow:hidden; }
-        .card::before { content:''; position:absolute; top:0; left:0; width:100%; height:4px; }
-        .card.indigo::before { background: var(--indigo); }
-        .card.emerald::before { background: var(--emerald); }
-        .card.rose::before { background: var(--rose); }
-        .card.amber::before { background: var(--amber); }
-
-        .card h4 { margin:0; font-size:0.75rem; color:#9ca3af; text-transform:uppercase; font-weight:800; letter-spacing:0.5px; display:flex; align-items:center; gap:8px; }
-        .card h2 { margin:15px 0 0 0; font-size:2.2rem; font-weight:900; }
-
-        /* TOOLBAR */
-        .toolbar { background:white; padding:15px 25px; border-radius:18px; border:1px solid #f1f5f9; display:flex; gap:15px; align-items:center; margin-bottom:30px; }
-        select, input { padding:10px 18px; border-radius:12px; border:1px solid #e5e7eb; font-weight:700; color:#374151; outline:none; font-size:0.85rem; }
-        .search-wrap { flex:1; display:flex; align-items:center; background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:0 15px; }
-        .search-wrap input { border:none; background:transparent; width:100%; }
-
-        /* WIDGETS */
-        .widget { background:white; padding:30px; border-radius:24px; border:1px solid #f1f5f9; box-shadow:0 10px 15px -3px rgba(0,0,0,0.04); margin-bottom:25px; }
-        .widget-title { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-        
-        .btn-mode { padding:6px 14px; border-radius:8px; border:1px solid #e5e7eb; cursor:pointer; font-weight:700; font-size:0.75rem; transition:0.2s; }
-        .btn-mode.active { background:var(--indigo); color:white; border-color:var(--indigo); }
-
-        .footer-tech { margin-top:auto; font-size:0.6rem; color:#d1d5db; text-align:center; letter-spacing:2px; font-weight:800; }
-        .animated { animation: fadeInUp 0.5s ease-out; }
-        @keyframes fadeInUp { from { opacity:0; transform:translateY(15px); } to { opacity:1; transform:translateY(0); } }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <div class="logo"><i class="fas fa-layer-group"></i> PORTAL</div>
-        
-        <a href="/principal" class="nav-item ${title === 'Principal' ? 'active' : ''}">🏠 Principal Home</a>
-        
-        ${currentDept ? `
-            <div class="nav-label">${currentDept} DEPT</div>
-            <a href="/hod?dept=${currentDept}" class="nav-item">🏢 HOD Dashboard</a>
-            <a href="/faculty?dept=${currentDept}" class="nav-item">🎓 Faculty Portal</a>
-            <a href="/reports?dept=${currentDept}" class="nav-item">📊 Data Reports</a>
-        ` : ''}
-
-        <div class="footer-tech">RFID INTERFACE V2.7</div>
-        <div style="margin-top:20px"><a href="/login" class="nav-item" style="color:var(--rose)"><i class="fas fa-power-off"></i> Logout</a></div>
-    </div>
-
-    <div class="main animated">
-        <div class="header">
-            <div>
-                <h1 style="margin:0; font-size:1.7rem; font-weight:900; color:var(--indigo)">${title}</h1>
-                <p style="color:#9ca3af; font-weight:600; font-size:0.9rem">Monitoring Active Academic Scans</p>
-            </div>
-            <div id="live-clock" style="font-size:1.2rem; font-weight:900; color:var(--indigo)"></div>
-        </div>
-        ${content}
-    </div>
-
-    <script>
-        setInterval(() => { document.getElementById('live-clock').innerText = new Date().toLocaleTimeString(); }, 1000);
-    </script>
-</body>
-</html>
-    `;
+<style>
+:root {
+  --bg-main: #0b0f19;
+  --sidebar-bg: rgba(15, 23, 42, 0.6);
+  --card-bg: rgba(30, 41, 59, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent-1: #8b5cf6; 
+  --accent-2: #06b6d4; 
+  --danger: #f43f5e;
+  --success: #10b981;
 }
 
-/* ================= PRINCIPAL VIEW ================= */
-app.get("/principal", (req, res) => {
-    const depts = ["Electrical", "Computer", "Civil", "Mechanical", "ENTC", "1st Year"];
-    const colors = ["#4f46e5", "#10b981", "#f59e0b", "#f43f5e", "#8b5cf6", "#06b6d4"];
-    const content = `
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:25px; margin-top:10px">
-            ${depts.map((d, i) => `
-                <a href="/hod?dept=${d}" style="text-decoration:none; color:inherit">
-                    <div class="card" style="text-align:center; padding:50px; cursor:pointer; border-top:6px solid ${colors[i]}">
-                        <h2 style="color:${colors[i]}">${d}</h2>
-                        <p style="color:#9ca3af; font-weight:700; font-size:0.85rem; margin-top:15px">Enter Dashboard <i class="fas fa-chevron-right"></i></p>
-                    </div>
-                </a>
-            `).join("")}
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+body { 
+  background: radial-gradient(circle at top left, #1a1c2e, #0b0f19); 
+  color: var(--text-main); 
+  height: 100vh; 
+  display: flex; 
+  overflow: hidden; 
+}
+
+/* Layout */
+.app-container { display: flex; width: 100%; height: 100%; }
+
+/* Sidebar */
+.sidebar { 
+  width: 260px; 
+  background: var(--sidebar-bg); 
+  backdrop-filter: blur(16px); 
+  border-right: 1px solid var(--glass-border); 
+  display: flex; 
+  flex-direction: column; 
+  padding: 1.5rem; 
+}
+
+.brand { 
+  font-size: 1.25rem; 
+  font-weight: 700; 
+  display: flex; 
+  align-items: center; 
+  gap: 0.5rem; 
+  margin-bottom: 2.5rem; 
+  background: linear-gradient(to right, var(--accent-1), var(--accent-2)); 
+  -webkit-background-clip: text; 
+  -webkit-text-fill-color: transparent; 
+}
+
+.form-group { margin-bottom: 1.5rem; }
+.form-label { 
+  font-size: 0.75rem; 
+  text-transform: uppercase; 
+  letter-spacing: 0.05em; 
+  color: var(--text-muted); 
+  margin-bottom: 0.5rem; 
+  display: block; 
+}
+
+.select-input, .text-input { 
+  width: 100%; 
+  background: rgba(0, 0, 0, 0.2); 
+  border: 1px solid var(--glass-border); 
+  color: #fff; 
+  padding: 0.75rem; 
+  border-radius: 0.5rem; 
+  outline: none; 
+  transition: 0.3s; 
+}
+
+.select-input:focus, .text-input:focus { 
+  border-color: var(--accent-1); 
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2); 
+}
+
+.nav-menu { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; }
+.nav-item { 
+  padding: 0.875rem 1rem; 
+  border-radius: 0.75rem; 
+  cursor: pointer; 
+  transition: all 0.3s ease; 
+  color: var(--text-muted); 
+  font-weight: 500; 
+  display: flex; 
+  align-items: center; 
+  gap: 0.75rem; 
+}
+
+.nav-item:hover { 
+  background: rgba(255, 255, 255, 0.05); 
+  color: var(--text-main); 
+  transform: translateX(4px); 
+}
+
+.nav-item.active { 
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.15), transparent); 
+  color: var(--accent-1); 
+  border-left: 3px solid var(--accent-1); 
+}
+
+/* Main Content */
+.main-content { 
+  flex: 1; 
+  padding: 2rem 3rem; 
+  overflow-y: auto; 
+}
+
+.header { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  margin-bottom: 2rem; 
+}
+
+.view-title { font-size: 1.75rem; font-weight: 600; }
+
+/* Sections */
+.view-section { display: none; animation: fadeIn 0.4s ease forwards; }
+.view-section.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Cards & Grids */
+.kpi-grid { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
+  gap: 1.5rem; 
+  margin-bottom: 2rem; 
+}
+
+.card { 
+  background: var(--card-bg); 
+  backdrop-filter: blur(12px); 
+  border: 1px solid var(--glass-border); 
+  border-radius: 1rem; 
+  padding: 1.5rem; 
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); 
+  transition: transform 0.3s; 
+}
+
+.card:hover { 
+  transform: translateY(-4px); 
+  border-color: rgba(255,255,255,0.15); 
+}
+
+.card-title { 
+  color: var(--text-muted); 
+  font-size: 0.875rem; 
+  font-weight: 500; 
+  margin-bottom: 0.75rem; 
+  display: flex; 
+  align-items: center; 
+  gap: 0.5rem; 
+}
+
+.card-value { font-size: 2rem; font-weight: 700; color: #fff; }
+.chart-container { height: 350px; width: 100%; position: relative; }
+
+/* Dept Grid */
+.dept-grid { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+  gap: 1.5rem; 
+}
+
+.dept-card { 
+  cursor: pointer; 
+  text-align: center; 
+  padding: 2.5rem 2rem; 
+  position: relative; 
+  overflow: hidden; 
+}
+
+.dept-card::before { 
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; 
+  background: linear-gradient(to right, var(--accent-1), var(--accent-2)); 
+  opacity: 0; transition: 0.3s; 
+}
+
+.dept-card:hover::before { opacity: 1; }
+.dept-icon { font-size: 2.5rem; margin-bottom: 1.5rem; }
+
+/* Tables */
+.table-container { overflow-x: auto; margin-top: 1rem; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--glass-border); }
+th { color: var(--text-muted); font-weight: 500; font-size: 0.875rem; text-transform: uppercase; }
+tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+.status-badge { 
+  padding: 0.25rem 0.75rem; 
+  border-radius: 1rem; 
+  font-size: 0.75rem; 
+  font-weight: 600; 
+}
+.danger { background: rgba(244, 63, 94, 0.1); color: var(--danger); }
+.success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+</style>
+</head>
+<body>
+
+<div class="app-container">
+  
+  <aside class="sidebar">
+    <div class="brand">📊 DataSync BI</div>
+    
+    <div class="form-group">
+      <label class="form-label">Active Class</label>
+      <select class="select-input">
+        <option value="se">Second Year (SE)</option>
+        <option value="te">Third Year (TE)</option>
+        <option value="be">Final Year (BE)</option>
+      </select>
+    </div>
+
+    <nav class="nav-menu">
+      <div class="nav-item active" onclick="switchView('dashboard', this)">
+        <span>📈</span> Dashboard
+      </div>
+      <div class="nav-item" onclick="switchView('faculty', this)">
+        <span>👨‍🏫</span> Faculty View
+      </div>
+      <div class="nav-item" onclick="switchView('hod', this)">
+        <span>🏢</span> HOD View
+      </div>
+      <div class="nav-item" onclick="switchView('principal', this)">
+        <span>🏛️</span> Principal View
+      </div>
+    </nav>
+  </aside>
+
+  <main class="main-content">
+    
+    <!-- DASHBOARD VIEW -->
+    <div id="dashboard" class="view-section active">
+      <div class="header">
+        <h1 class="view-title">Overview Statistics</h1>
+      </div>
+      
+      <div class="kpi-grid">
+        <div class="card">
+          <div class="card-title">🟢 Total Present</div>
+          <div class="card-value"><span id="total">0</span></div>
         </div>
-    `;
-    res.send(layout("Global Campus Overview", content));
+        <div class="card">
+          <div class="card-title">🔴 Total Absent</div>
+          <div class="card-value">24</div>
+        </div>
+        <div class="card">
+          <div class="card-title">〽️ % Attendance</div>
+          <div class="card-value">82%</div>
+        </div>
+      </div>
+
+      <div class="kpi-grid" style="grid-template-columns: 1fr;">
+        <div class="card">
+          <div class="card-title">📊 Subject-wise Attendance</div>
+          <div class="chart-container">
+            <canvas id="chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FACULTY VIEW -->
+    <div id="faculty" class="view-section">
+      <div class="header">
+        <h1 class="view-title">Faculty Portal</h1>
+        <input type="text" class="text-input" placeholder="🔍 Search students..." style="width: 300px;">
+      </div>
+      
+      <div class="kpi-grid">
+        <div class="card"><div class="card-title">Present Today</div><div class="card-value">64</div></div>
+        <div class="card"><div class="card-title">Assigned Students</div><div class="card-value">75</div></div>
+        <div class="card"><div class="card-title">Course Average</div><div class="card-value">85%</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Detailed Class Report</div>
+        <div class="table-container">
+          <table>
+            <thead><tr><th>Subject</th><th>Present</th><th>Absent</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Advanced Algorithms</td><td>60</td><td>15</td><td><span class="status-badge success">Optimal</span></td></tr>
+              <tr><td>Operating Systems</td><td>42</td><td>33</td><td><span class="status-badge danger">Defaulters</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- HOD VIEW -->
+    <div id="hod" class="view-section">
+      <div class="header">
+        <h1 class="view-title">Department Metrics</h1>
+        <div style="display: flex; gap: 1rem; width: 400px;">
+          <select class="select-input"><option>All Classes</option><option>SE</option><option>TE</option><option>BE</option></select>
+          <select class="select-input"><option>All Subjects</option></select>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="card"><div class="card-title">Dept. Present</div><div class="card-value">340</div></div>
+        <div class="card"><div class="card-title">Dept. Total</div><div class="card-value">410</div></div>
+        <div class="card"><div class="card-title">Overall Health</div><div class="card-value">82.9%</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Subject Monitoring</div>
+        <div class="table-container">
+          <table>
+            <thead><tr><th>Year</th><th>Subject</th><th>Attendance Rate</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>SE</td><td>Data Structures</td><td>88%</td><td><span class="status-badge success">Healthy</span></td></tr>
+              <tr><td>TE</td><td>Computer Networks</td><td>65%</td><td><span class="status-badge danger">Attention Required</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRINCIPAL VIEW -->
+    <div id="principal" class="view-section">
+      <div class="header">
+        <h1 class="view-title">Institute Analytics</h1>
+      </div>
+
+      <div class="dept-grid">
+        <div class="card dept-card" onclick="goToHod()">
+          <div class="dept-icon">💻</div><h3>Computer Engg</h3>
+        </div>
+        <div class="card dept-card" onclick="goToHod()">
+          <div class="dept-icon">⚡</div><h3>Electrical Engg</h3>
+        </div>
+        <div class="card dept-card" onclick="goToHod()">
+          <div class="dept-icon">🏗️</div><h3>Civil Engg</h3>
+        </div>
+        <div class="card dept-card" onclick="goToHod()">
+          <div class="dept-icon">⚙️</div><h3>Mechanical Engg</h3>
+        </div>
+        <div class="card dept-card" onclick="goToHod()">
+          <div class="dept-icon">📡</div><h3>ENTC</h3>
+        </div>
+        <div class="card dept-card" onclick="goToHod()">
+          <div class="dept-icon">🎓</div><h3>First Year</h3>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// UI Navigation Logic
+function switchView(viewId, element) {
+  document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  
+  document.getElementById(viewId).classList.add('active');
+  if (element) {
+    element.classList.add('active');
+  }
+}
+
+function goToHod() {
+  switchView('hod', document.querySelectorAll('.nav-item')[2]);
+}
+
+// Core Data Logic
+let chart;
+
+async function loadData() {
+  const res = await fetch("/api/dashboard");
+  const data = await res.json();
+
+  document.getElementById("total").innerText = data.total;
+
+  if(chart) chart.destroy();
+
+  chart = new Chart(document.getElementById("chart"), {
+    type: "bar",
+    data: {
+      labels: Object.keys(data.subjectWise),
+      datasets: [{
+        label: "Attendance",
+        data: Object.values(data.subjectWise),
+        backgroundColor: "#8b5cf6",
+        borderRadius: 6,
+        borderWidth: 0,
+        barPercentage: 0.6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: { 
+          beginAtZero: true, 
+          grid: { color: "rgba(255,255,255,0.05)" }, 
+          ticks: { color: "#94a3b8" } 
+        },
+        x: { 
+          grid: { display: false }, 
+          ticks: { color: "#94a3b8" } 
+        }
+      }
+    }
+  });
+}
+
+loadData();
+</script>
+
+</body>
+</html>
+`);
 });
+```
+/* ================= START ================= */
+app.get("/",(req,res)=>res.redirect("/dashboard"));
 
-/* ================= HOD VIEW ================= */
-app.get("/hod", (req, res) => {
-    const dept = req.query.dept || "General";
-    const cls = req.query.className || "SE";
-    const sub = req.query.subject || "";
-    const data = getAnalytics({ className: cls, subject: sub });
-    const subjects = [...new Set(timetable.map(t => t.subject))];
-
-    const content = `
-        <div class="toolbar">
-            <select onchange="location.href='?dept=${dept}&subject=${sub}&className='+this.value">
-                <option value="SE" ${cls==='SE'?'selected':''}>Class: SE</option>
-                <option value="TE" ${cls==='TE'?'selected':''}>Class: TE</option>
-                <option value="BE" ${cls==='BE'?'selected':''}>Class: BE</option>
-            </select>
-            <select onchange="location.href='?dept=${dept}&className=${cls}&subject='+this.value">
-                <option value="">Filter by Subject</option>
-                ${subjects.map(s => `<option value="${s}" ${sub===s?'selected':''}>${s}</option>`).join("")}
-            </select>
-        </div>
-
-        <div class="stats-grid">
-            <div class="card emerald"><h4>✅ Present</h4><h2 style="color:var(--emerald)">${data.present}</h2></div>
-            <div class="card rose"><h4>❌ Absent</h4><h2 style="color:var(--rose)">${data.absent}</h2></div>
-            <div class="card indigo"><h4>📈 Attendance %</h4><h2 style="color:var(--indigo)">${data.percent}%</h2></div>
-            <div class="card amber"><h4>👥 Total Students</h4><h2 style="color:var(--amber)">${data.total}</h2></div>
-        </div>
-
-        <div class="widget">
-            <h3>Subject Performance Analytics (Class ${cls})</h3>
-            <div style="height:320px"><canvas id="hodChart"></canvas></div>
-        </div>
-
-        <script>
-            const subData = ${JSON.stringify(data.subjectPercents)};
-            new Chart(document.getElementById('hodChart'), {
-                type: 'bar',
-                data: { 
-                    labels: Object.keys(subData).length ? Object.keys(subData) : ['Awaiting Scans'], 
-                    datasets: [{ label: 'Performance %', data: Object.values(subData).length ? Object.values(subData) : [0], backgroundColor: '#4f46e5', borderRadius: 12 }] 
-                },
-                options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } }
-            });
-        </script>
-    `;
-    res.send(layout("HOD Control Desk", content, dept));
-});
-
-/* ================= FACULTY VIEW ================= */
-app.get("/faculty", (req, res) => {
-    const dept = req.query.dept || "General";
-    const cls = req.query.className || "SE";
-    const sub = req.query.subject || "";
-    const studSearch = req.query.studentName || "";
-    const data = getAnalytics({ className: cls, subject: sub, studentName: studSearch });
-    const subjects = [...new Set(timetable.map(t => t.subject))];
-
-    const content = `
-        <div class="toolbar">
-            <select onchange="location.href='?dept=${dept}&subject=${sub}&studentName=${studSearch}&className='+this.value">
-                <option value="SE" ${cls==='SE'?'selected':''}>Batch: SE</option>
-                <option value="TE" ${cls==='TE'?'selected':''}>Batch: TE</option>
-                <option value="BE" ${cls==='BE'?'selected':''}>Batch: BE</option>
-            </select>
-            <select onchange="location.href='?dept=${dept}&className=${cls}&studentName=${studSearch}&subject='+this.value">
-                <option value="">Choose Subject</option>
-                ${subjects.map(s => `<option value="${s}" ${sub===s?'selected':''}>${s}</option>`).join("")}
-            </select>
-            <div class="search-wrap">
-                <i class="fas fa-search" style="color:#9ca3af"></i>
-                <input type="text" placeholder="Search student name..." value="${studSearch}" 
-                       onkeypress="if(event.key==='Enter') location.href='?dept=${dept}&className=${cls}&subject=${sub}&studentName='+this.value">
-            </div>
-        </div>
-
-        <div class="stats-grid">
-            <div class="card emerald"><h4>✨ Present</h4><h2 style="color:var(--emerald)">${data.present}</h2></div>
-            <div class="card rose"><h4>🚶 Absent</h4><h2 style="color:var(--rose)">${data.absent}</h2></div>
-            <div class="card indigo"><h4>📊 Class Score</h4><h2 style="color:var(--indigo)">${data.percent}%</h2></div>
-            <div class="card amber"><h4>🏫 Strength</h4><h2 style="color:var(--amber)">${data.total}</h2></div>
-        </div>
-
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:25px">
-            <div class="widget">
-                <div class="widget-title"><h3>Subject-wise Comparison 📋</h3></div>
-                <div style="height:280px"><canvas id="subjChart"></canvas></div>
-            </div>
-            <div class="widget">
-                <div class="widget-title">
-                    <h3>Participation Trend 📈</h3>
-                    <div>
-                        <button class="btn-mode active" id="btnW" onclick="updateTrend('W')">Weekly</button>
-                        <button class="btn-mode" id="btnM" onclick="updateTrend('M')">Monthly</button>
-                    </div>
-                </div>
-                <div style="height:280px"><canvas id="trendChart"></canvas></div>
-            </div>
-        </div>
-
-        <script>
-            // Bar Chart
-            const subData = ${JSON.stringify(data.subjectPercents)};
-            new Chart(document.getElementById('subjChart'), {
-                type: 'bar',
-                data: { 
-                    labels: Object.keys(subData).length ? Object.keys(subData) : ['N/A'], 
-                    datasets: [{ label: 'Attendance %', data: Object.values(subData).length ? Object.values(subData) : [0], backgroundColor: '#10b981', borderRadius: 10 }] 
-                },
-                options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } }
-            });
-
-            // Trend Chart
-            let trend = new Chart(document.getElementById('trendChart'), {
-                type: 'line',
-                data: { 
-                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], 
-                    datasets: [{ label: 'Attendance %', data: [0, 0, 0, 0, 0, ${data.percent}], borderColor: '#4f46e5', tension: 0.4, fill: true, backgroundColor: 'rgba(79, 70, 229, 0.05)' }] 
-                },
-                options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } }
-            });
-
-            function updateTrend(mode) {
-                document.getElementById('btnW').classList.toggle('active', mode==='W');
-                document.getElementById('btnM').classList.toggle('active', mode==='M');
-                if(mode==='M') {
-                    trend.data.labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-                    trend.data.datasets[0].data = [0, 0, 0, ${data.percent}];
-                } else {
-                    trend.data.labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                    trend.data.datasets[0].data = [0, 0, 0, 0, 0, ${data.percent}];
-                }
-                trend.update();
-            }
-        </script>
-    `;
-    res.send(layout("Faculty Activity Hub", content, dept));
-});
-
-/* ================= REPORTS ================= */
-app.get("/reports", (req, res) => {
-    const dept = req.query.dept || "General";
-    const data = getAnalytics({});
-    res.send(layout("System Export", `
-        <div class="widget" style="text-align:center; padding:60px">
-            <div style="background:var(--emerald); color:white; width:80px; height:80px; border-radius:20px; display:flex; align-items:center; justify-content:center; margin:0 auto 25px; font-size:2.5rem">
-                <i class="fas fa-file-excel"></i>
-            </div>
-            <h2>Generate Official Report</h2>
-            <p style="color:#9ca3af; max-width:450px; margin:10px auto 30px; font-weight:600">Export current RFID scan logs into a professional Excel CSV file for departmental records.</p>
-            <button onclick="exportCSV()" style="padding:16px 50px; background:var(--indigo); color:white; border:none; border-radius:15px; font-weight:800; cursor:pointer; font-size:1rem">
-                <i class="fas fa-download"></i> DOWNLOAD EXCEL SHEET
-            </button>
-        </div>
-        <script>
-            function exportCSV() {
-                const data = ${JSON.stringify(data.records)};
-                if(data.length === 0) return alert("System state is currently Zero. Please scan students before exporting.");
-                let csv = "Student Name,Class,Batch,Subject,Date\\n";
-                data.forEach(r => { csv += \`\${r.name},\${r.className},\${r.batch},\${r.subject},\${r.date}\\n\`; });
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = 'Attendance_Log_' + new Date().toISOString().split('T')[0] + '.csv';
-                document.body.appendChild(a); a.click();
-            }
-        </script>
-    `, dept));
-});
-
-
-/* ================= LOGIN ================= */
-app.get("/login", (req, res) => {
-    res.send(`
-        <body style="background:#f3f4f6; display:flex; align-items:center; justify-content:center; height:100vh; font-family:sans-serif">
-            <div style="background:white; padding:60px; border-radius:35px; box-shadow:0 30px 60px -12px rgba(0,0,0,0.08); text-align:center; width:400px; border:1px solid #e5e7eb">
-                <div style="color:var(--indigo); font-size:4rem; margin-bottom:25px"><i class="fas fa-fingerprint"></i></div>
-                <h1 style="margin:0; font-size:2.2rem; font-weight:900; color:#111827; letter-spacing:-1px">Academic Portal</h1>
-                <p style="color:#9ca3af; font-weight:700; margin:10px 0 40px 0">Authorized Faculty Access Only</p>
-                <button onclick="location.href='/principal'" style="width:100%; padding:18px; background:#4f46e5; color:white; border:none; border-radius:15px; cursor:pointer; font-weight:800; font-size:1.1rem; box-shadow: 0 10px 20px -5px rgba(79,70,229,0.3)">Enter Dashboard</button>
-            </div>
-        </body>
-    `);
-});
-
-app.get("/", (req, res) => res.redirect("/login"));
-app.listen(PORT, () => console.log("🚀 Professional Portal: http://localhost:" + PORT));
+app.listen(PORT,()=>console.log("🚀 Server running"));
