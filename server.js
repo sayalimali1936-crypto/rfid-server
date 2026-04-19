@@ -315,16 +315,16 @@ app.get("/dashboard", (req, res) => {
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
     :root {
-      --bg-dark: #0f172a;
-      --bg-card: #1e293b;
-      --bg-hover: #334155;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --border-color: #334155;
-      --danger: #ef4444;
-      --success: #22c55e;
+      --bg-dark: #121212;
+      --bg-card: #1e1e1e;
+      --bg-hover: #292929;
+      --primary: #10b981;
+      --primary-hover: #059669;
+      --text-main: #f9fafb;
+      --text-muted: #9ca3af;
+      --border-color: #374151;
+      --danger: #f43f5e;
+      --success: #10b981;
       --transition: all 0.3s ease;
     }
 
@@ -409,6 +409,9 @@ app.get("/dashboard", (req, res) => {
        <div>Admin Panel</div>
     </div>
     
+    <div class="nav-item" onclick="switchTab('principal')">
+       <span style="font-size:1.1rem;">🏛</span> Principal
+    </div>
     <div class="nav-item active" onclick="switchTab('dashboard')">
        <span style="font-size:1.1rem;">📊</span> Dashboard
     </div>
@@ -417,9 +420,6 @@ app.get("/dashboard", (req, res) => {
     </div>
     <div class="nav-item" onclick="switchTab('hod')">
        <span style="font-size:1.1rem;">🏫</span> HOD
-    </div>
-    <div class="nav-item" onclick="switchTab('principal')">
-       <span style="font-size:1.1rem;">🏛</span> Principal
     </div>
     
     <div class="sidebar-footer">
