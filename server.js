@@ -257,7 +257,7 @@ app.get("/download/today", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-});|
+});
 /* =========================
    DASHBOARD API
 ========================= */
