@@ -92,7 +92,7 @@ function identifyCard(cardNo) {
 function getIndianTime() {
   const utc = new Date();
   const ist = new Date(utc.getTime() + (5.5 * 60 * 60 * 1000));
-  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
   return {
     date: ist.toISOString().slice(0, 10),
@@ -109,8 +109,8 @@ function getActiveSlot(day, time, identity) {
   return timetable.find(slot => {
     if (normalize(slot.day) !== normalize(day)) return false;
 
-    const startMin = timeToMinutes(slot.start_time.slice(0,5));
-    const endMin = timeToMinutes(slot.end_time.slice(0,5));
+    const startMin = timeToMinutes(slot.start_time.slice(0, 5));
+    const endMin = timeToMinutes(slot.end_time.slice(0, 5));
 
     if (nowMin < startMin || nowMin > endMin) return false;
 
@@ -231,7 +231,7 @@ app.get("/log", (req, res) => {
         slot.subject
       ].join(",") + "\n";
 
-      fs.appendFile(csvPath, csvLine, () => {});
+      fs.appendFile(csvPath, csvLine, () => { });
 
       console.log("✅ ATTENDANCE LOGGED SUCCESSFULLY");
       res.send("OK");
@@ -267,8 +267,8 @@ app.get("/api/dashboard", (req, res) => {
   const lines = data.trim().split("\n").slice(1);
 
   let records = lines.map(line => {
-    const [date,time,role,name,card,className,batch,subject] = line.split(",");
-    return { date,time,role,name,card,className,batch,subject };
+    const [date, time, role, name, card, className, batch, subject] = line.split(",");
+    return { date, time, role, name, card, className, batch, subject };
   });
 
   const { classFilter, subjectFilter, dateFilter } = req.query;
