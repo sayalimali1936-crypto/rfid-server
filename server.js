@@ -149,44 +149,158 @@ res.send(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Advanced Attendance System</title>
+<title>Smart Attendance</title>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
 
 <style>
-body{margin:0;font-family:Segoe UI;background:#0f172a;color:white;display:flex}
+:root{
+ --bg:#0b1220;
+ --card:#111827;
+ --accent:#2563eb;
+ --text:#e5e7eb;
+ --muted:#94a3b8;
+}
 
-/* sidebar */
+body{
+ margin:0;
+ font-family:Segoe UI;
+ background:linear-gradient(135deg,#0b1220,#020617);
+ color:var(--text);
+ display:flex;
+}
+
+/* SIDEBAR */
 .sidebar{
- width:240px;
- background:#020617;
+ width:250px;
  padding:20px;
+ background:#020617;
+ border-right:1px solid #1e293b;
+}
+
+.logo{
+ font-size:18px;
+ font-weight:600;
+ margin-bottom:25px;
+ display:flex;
+ align-items:center;
+ gap:8px;
 }
 
 .nav{
+ display:flex;
+ align-items:center;
+ gap:10px;
  padding:12px;
- margin:10px 0;
- background:#1e293b;
+ margin:8px 0;
  border-radius:8px;
  cursor:pointer;
+ transition:.3s;
 }
 
-.nav:hover{background:#6366f1}
-.active{background:#6366f1}
+.nav:hover{
+ background:rgba(37,99,235,0.2);
+ transform:translateX(4px);
+}
 
-/* main */
-.main{flex:1;padding:20px}
+.active{
+ background:var(--accent);
+}
 
-/* cards */
-.cards{display:flex;gap:15px;margin-bottom:20px}
-.card{flex:1;padding:20px;background:#1e293b;border-radius:10px;text-align:center}
-.big{font-size:24px}
+/* MAIN */
+.main{
+ flex:1;
+ padding:30px;
+ animation:fade .5s ease;
+}
 
-/* table */
-table{width:100%;border-collapse:collapse}
-td,th{padding:10px;border-bottom:1px solid #334155}
+@keyframes fade{
+ from{opacity:0; transform:translateY(10px)}
+ to{opacity:1; transform:translateY(0)}
+}
+
+/* HEADER */
+.header{
+ font-size:24px;
+ margin-bottom:20px;
+}
+
+/* CARDS */
+.cards{
+ display:flex;
+ gap:20px;
+ margin-bottom:25px;
+}
+
+.card{
+ flex:1;
+ padding:20px;
+ border-radius:14px;
+ background:rgba(255,255,255,0.05);
+ backdrop-filter:blur(10px);
+ transition:.3s;
+ position:relative;
+ overflow:hidden;
+}
+
+.card:hover{
+ transform:translateY(-5px);
+ box-shadow:0 10px 30px rgba(0,0,0,0.4);
+}
+
+.card h3{
+ font-size:13px;
+ color:var(--muted);
+ margin:0;
+}
+
+.value{
+ font-size:28px;
+ margin-top:8px;
+}
+
+/* TABLE */
+.table{
+ background:var(--card);
+ border-radius:14px;
+ overflow:hidden;
+}
+
+table{
+ width:100%;
+ border-collapse:collapse;
+}
+
+th{
+ background:#020617;
+ color:var(--muted);
+ padding:12px;
+ text-align:left;
+}
+
+td{
+ padding:12px;
+ border-top:1px solid #1e293b;
+ transition:.2s;
+}
+
+tr:hover td{
+ background:rgba(37,99,235,0.1);
+}
+
 .red{color:#ef4444}
 .green{color:#22c55e}
 
+/* CHART */
+.chart-box{
+ margin-top:20px;
+ padding:20px;
+ background:var(--card);
+ border-radius:14px;
+}
+
+/* VIEW */
 .view{display:none}
 .view.active{display:block}
 </style>
@@ -195,28 +309,60 @@ td,th{padding:10px;border-bottom:1px solid #334155}
 <body>
 
 <div class="sidebar">
-<h3>📊 System</h3>
-<div class="nav active" onclick="show('home',this)">Dashboard</div>
-<div class="nav" onclick="show('faculty',this)">Faculty</div>
-<div class="nav" onclick="show('hod',this)">HOD</div>
+<div class="logo">
+<i data-lucide="layout-dashboard"></i> System
+</div>
+
+<div class="nav active" onclick="switchView('home',this)">
+<i data-lucide="home"></i> Dashboard
+</div>
+
+<div class="nav" onclick="switchView('faculty',this)">
+<i data-lucide="users"></i> Faculty
+</div>
+
+<div class="nav" onclick="switchView('hod',this)">
+<i data-lucide="building"></i> HOD
+</div>
+
 </div>
 
 <div class="main">
 
 <!-- HOME -->
 <div id="home" class="view active">
+
+<div class="header">Overview</div>
+
 <div class="cards">
-<div class="card">Subjects<div class="big" id="subjects"></div></div>
-<div class="card">Students<div class="big" id="students"></div></div>
-<div class="card">Defaulters<div class="big" id="def"></div></div>
+<div class="card">
+<h3>Total Subjects</h3>
+<div class="value" id="subjects"></div>
 </div>
 
+<div class="card">
+<h3>Total Students</h3>
+<div class="value" id="students"></div>
+</div>
+
+<div class="card">
+<h3>Defaulters</h3>
+<div class="value" id="def"></div>
+</div>
+</div>
+
+<div class="chart-box">
 <canvas id="chart"></canvas>
+</div>
+
 </div>
 
 <!-- FACULTY -->
 <div id="faculty" class="view">
-<h3>Student Report</h3>
+
+<div class="header">Student Report</div>
+
+<div class="table">
 <table>
 <thead>
 <tr><th>Name</th><th>Subject</th><th>%</th><th>Status</th></tr>
@@ -225,22 +371,32 @@ td,th{padding:10px;border-bottom:1px solid #334155}
 </table>
 </div>
 
+</div>
+
 <!-- HOD -->
 <div id="hod" class="view">
-<h3>Subject Summary</h3>
+
+<div class="header">Subject Summary</div>
+
+<div class="table">
 <table>
-<thead><tr><th>Subject</th><th>Lectures</th></tr></thead>
+<thead>
+<tr><th>Subject</th><th>Lectures</th></tr>
+</thead>
 <tbody id="hTable"></tbody>
 </table>
 </div>
 
 </div>
 
+</div>
+
 <script>
+lucide.createIcons();
 
 let chart;
 
-function show(id,el){
+function switchView(id,el){
  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
  document.getElementById(id).classList.add("active");
 
@@ -253,9 +409,8 @@ async function load(){
  const res=await fetch("/api/advanced");
  const d=await res.json();
 
- let students=Object.keys(d.report).length;
  let subjects=Object.keys(d.subjectLectures).length;
-
+ let students=Object.keys(d.report).length;
  let def=0;
 
  let f="";
@@ -273,9 +428,13 @@ async function load(){
   });
  });
 
- document.getElementById("students").innerText=students;
- document.getElementById("subjects").innerText=subjects;
- document.getElementById("def").innerText=def;
+ subjectsEl = document.getElementById("subjects");
+ studentsEl = document.getElementById("students");
+ defEl = document.getElementById("def");
+
+ subjectsEl.innerText=subjects;
+ studentsEl.innerText=students;
+ defEl.innerText=def;
 
  fTable.innerHTML=f;
 
@@ -294,15 +453,19 @@ async function load(){
    labels:Object.keys(d.subjectLectures),
    datasets:[{
      data:Object.values(d.subjectLectures),
-     backgroundColor:"#6366f1"
+     backgroundColor:"#2563eb",
+     borderRadius:6
    }]
+  },
+  options:{
+   plugins:{legend:{display:false}},
+   scales:{y:{beginAtZero:true}}
   }
  });
 
 }
 
 load();
-
 </script>
 
 </body>
