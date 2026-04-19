@@ -270,4 +270,9 @@ load();
 });
 
 /* ================= START ================= */
+app.get("/", (req,res)=> res.redirect("/dashboard"));
+
+app.get("/dashboard", ...)
+
+app.get("/api/dashboard", ...)
 app.listen(PORT,()=>console.log("🚀 Server running"));
